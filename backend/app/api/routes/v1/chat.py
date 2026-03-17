@@ -18,7 +18,7 @@ from app.core.security import verify_api_key
 router = APIRouter(
     prefix="/chat",
     tags=["Chat"],
-    dependencies=[Depends(verify_api_key)],
+    # dependencies=[Depends(verify_api_key)],
 )
 
 # ── Main chat endpoint ────────────────────────────────────────────────────────
