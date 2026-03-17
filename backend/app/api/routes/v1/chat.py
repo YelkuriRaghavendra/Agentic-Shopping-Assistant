@@ -1,0 +1,83 @@
+"""
+Chat routes v1.
+
+This file only registers URL patterns → controller method mappings.
+Zero business logic here.
+"""
+
+from fastapi import APIRouter, Depends
+from app.api.controllers.chat_controller import chat_controller
+from app.api.dto.chat_dto import (
+    ChatResponse,
+    CustomerResponse,
+    SessionResponse, MessageHistoryResponse,
+    FeedbackResponse,
+)
+from app.core.security import verify_api_key
+
+router = APIRouter(
+    prefix="/chat",
+    tags=["Chat"],
+    dependencies=[Depends(verify_api_key)],
+)
+
+# ── Main chat endpoint ────────────────────────────────────────────────────────
+router.post(
+    "",
+    response_model=ChatResponse,
+    summary="Send a message",
+    description=(
+        "Send a customer message and receive a bot response. "
+        "Session is auto-created if not provided. "
+        "Pass customer_id to enable memory across sessions."
+    ),
+)(chat_controller.send_message)
+
+# ── Session management ────────────────────────────────────────────────────────
+router.post(
+    "/sessions",
+    response_model=SessionResponse,
+    summary="Create a session",
+    description="Explicitly create a session. Most clients don't need this — POST /chat auto-creates sessions.",
+)(chat_controller.create_session)
+
+router.get(
+    "/sessions/{session_id}",
+    response_model=SessionResponse,
+    summary="Get a session",
+)(chat_controller.get_session)
+
+router.post(
+    "/sessions/{session_id}/end",
+    response_model=SessionResponse,
+    summary="End a session",
+)(chat_controller.end_session)
+
+router.get(
+    "/sessions/{session_id}/messages",
+    response_model=MessageHistoryResponse,
+    summary="Get message history",
+    description="Cursor-paginated. Pass next_cursor as before_id for the next page.",
+)(chat_controller.get_history)
+
+# ── Customer management ───────────────────────────────────────────────────────
+router.post(
+    "/customers",
+    response_model=CustomerResponse,
+    summary="Create a customer",
+    description="Register a customer to enable persistent memory across sessions.",
+)(chat_controller.create_customer)
+
+router.get(
+    "/customers/{customer_id}",
+    response_model=CustomerResponse,
+    summary="Get a customer",
+)(chat_controller.get_customer)
+
+# ── Feedback ──────────────────────────────────────────────────────────────────
+router.post(
+    "/messages/{message_id}/feedback",
+    response_model=FeedbackResponse,
+    summary="Submit message feedback",
+    description="Thumbs up (1) or thumbs down (-1) on any bot message.",
+)(chat_controller.add_feedback)

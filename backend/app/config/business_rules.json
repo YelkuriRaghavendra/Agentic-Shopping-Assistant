@@ -1,0 +1,244 @@
+{
+  "_comment": "All business rule values live here. Edit without touching Python code.",
+  "budget": {
+    "unlimited_sentinel": 9999.0,
+    "cheap_keyword_default": 100.0,
+    "budget_tier_max": 80.0,
+    "mid_tier_max": 200.0,
+    "tiers": {
+      "budget": "prefers budget options (under $80)",
+      "mid": "mid-range budget ($80\u2013200)",
+      "premium": "premium budget ($200+)"
+    }
+  },
+  "session": {
+    "max_shown_products": 20,
+    "max_profile_brands": 5,
+    "max_profile_products_seen": 50
+  },
+  "conversation": {
+    "summary_older_turns_keep": 12
+  },
+  "slot_extraction": {
+    "categories": {
+      "shoes": [
+        "shoe",
+        "sneaker",
+        "trainer",
+        "boot",
+        "footwear",
+        "loafer",
+        "sandal"
+      ],
+      "shirt": [
+        "shirt",
+        "tee",
+        "t-shirt",
+        "blouse",
+        "top"
+      ],
+      "jacket": [
+        "jacket",
+        "coat",
+        "hoodie",
+        "sweatshirt",
+        "parka"
+      ],
+      "pants": [
+        "pant",
+        "jean",
+        "trouser",
+        "short",
+        "chino"
+      ],
+      "dress": [
+        "dress",
+        "skirt"
+      ],
+      "bag": [
+        "bag",
+        "backpack",
+        "tote",
+        "handbag"
+      ]
+    },
+    "use_cases": {
+      "running": [
+        "run",
+        "running",
+        "jog",
+        "marathon"
+      ],
+      "casual": [
+        "casual",
+        "everyday",
+        "daily",
+        "walk",
+        "lifestyle"
+      ],
+      "work": [
+        "work",
+        "office",
+        "formal",
+        "professional"
+      ],
+      "hiking": [
+        "hike",
+        "hiking",
+        "trail",
+        "outdoor",
+        "trek"
+      ],
+      "sport": [
+        "sport",
+        "gym",
+        "training",
+        "workout",
+        "fitness"
+      ]
+    },
+    "brands": [
+      "nike",
+      "adidas",
+      "new balance",
+      "puma",
+      "reebok",
+      "asics",
+      "brooks",
+      "hoka",
+      "saucony",
+      "vans",
+      "converse",
+      "under armour",
+      "jordan",
+      "salomon",
+      "merrell",
+      "timberland",
+      "north face",
+      "zara",
+      "h&m"
+    ],
+    "colors": [
+      "red",
+      "blue",
+      "black",
+      "white",
+      "green",
+      "grey",
+      "gray",
+      "pink",
+      "purple",
+      "brown",
+      "orange",
+      "navy",
+      "beige",
+      "gold",
+      "silver"
+    ],
+    "no_brand_phrases": [
+      "any brand",
+      "no preference",
+      "doesn't matter",
+      "don't mind"
+    ],
+    "budget_keywords": {
+      "cheap": [
+        "cheap",
+        "budget",
+        "affordable"
+      ],
+      "no_limit": [
+        "no limit",
+        "any price"
+      ]
+    },
+    "reset_phrases": [
+      "start over",
+      "reset",
+      "new search",
+      "scratch that",
+      "forget it",
+      "never mind"
+    ]
+  },
+  "guardrails": {
+    "output": {
+      "offbrand_words": [
+        "stupid",
+        "idiot",
+        "dumb",
+        "hate",
+        "terrible",
+        "worst",
+        "garbage",
+        "trash"
+      ]
+    }
+  },
+  "people_context": {
+    "relations": {
+      "friend": [
+        "friend",
+        "mate",
+        "buddy",
+        "pal"
+      ],
+      "dad": [
+        "dad",
+        "father",
+        "pop"
+      ],
+      "mum": [
+        "mum",
+        "mom",
+        "mother"
+      ],
+      "partner": [
+        "partner",
+        "boyfriend",
+        "girlfriend",
+        "husband",
+        "wife",
+        "spouse"
+      ],
+      "sibling": [
+        "brother",
+        "sister",
+        "sibling"
+      ],
+      "colleague": [
+        "colleague",
+        "coworker",
+        "workmate",
+        "boss"
+      ],
+      "child": [
+        "son",
+        "daughter",
+        "kid",
+        "child"
+      ]
+    },
+    "interest_keywords": [
+      "runs",
+      "running",
+      "runner",
+      "cyclist",
+      "cycling",
+      "hiker",
+      "hiking",
+      "gym",
+      "fitness",
+      "yoga",
+      "tennis",
+      "football",
+      "basketball",
+      "fashion",
+      "style",
+      "outdoors",
+      "travel",
+      "work",
+      "office"
+    ]
+  }
+}
