@@ -1,4 +1,4 @@
-# Chat Service v2
+# Chat Service
 
 Production-grade e-commerce shopping assistant.
 Clean architecture: controllers → services → repositories → clients.
