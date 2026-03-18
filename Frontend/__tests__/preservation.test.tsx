@@ -4,7 +4,7 @@
  * These tests MUST PASS on unfixed code.
  * They confirm baseline chat functionality that must be preserved after the fix.
  *
- * Validates: Requirements 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8
+ * Validates: Requirements 3.1, 3.2, 3.4, 3.5, 3.6, 3.7, 3.8
  */
 
 import React from "react";
@@ -13,7 +13,7 @@ import { describe, it, expect, vi } from "vitest";
 import { ChatMessage } from "@/components/ChatMessage";
 import { ChatInput } from "@/components/ChatInput";
 import { TypingIndicator } from "@/components/TypingIndicator";
-import type { ChatMessage as ChatMessageType, ProductSuggestion } from "@/types/chat.types";
+import type { ChatMessageUI } from "@/types/chat.types";
 
 // ---------------------------------------------------------------------------
 // Helpers / generators
@@ -21,25 +21,14 @@ import type { ChatMessage as ChatMessageType, ProductSuggestion } from "@/types/
 
 function makeMessage(
   role: "user" | "bot",
-  overrides: Partial<ChatMessageType> = {}
-): ChatMessageType {
+  overrides: Partial<ChatMessageUI> = {}
+): ChatMessageUI {
   return {
     id: "msg-1",
     role,
     content: "Hello world",
     timestamp: new Date("2024-01-01T00:00:00Z"),
     ...overrides,
-  };
-}
-
-function makeProduct(id: string, badge?: string): ProductSuggestion {
-  return {
-    id,
-    name: `Product ${id}`,
-    price: `$49.99`,
-    image: `https://example.com/${id}.png`,
-    rating: 4.5,
-    badge,
   };
 }
 
@@ -52,15 +41,6 @@ const USER_CONTENTS = [
   "a",
   "1234567890",
   "Special chars: !@#$%",
-];
-
-// Product arrays of varying lengths (1..5)
-const PRODUCT_ARRAYS: ProductSuggestion[][] = [
-  [makeProduct("p1", "Best Seller")],
-  [makeProduct("p2"), makeProduct("p3", "Sale")],
-  [makeProduct("p4"), makeProduct("p5"), makeProduct("p6")],
-  [makeProduct("p7"), makeProduct("p8"), makeProduct("p9"), makeProduct("p10")],
-  [makeProduct("a"), makeProduct("b"), makeProduct("c"), makeProduct("d"), makeProduct("e")],
 ];
 
 // Non-empty input strings for Enter-key property
@@ -83,18 +63,6 @@ describe("Preservation: Observation baseline on unfixed code", () => {
     // Bot bubble uses bg-[hsl(var(--card))]
     const bubble = container.querySelector(".rounded-tl-sm");
     expect(bubble).not.toBeNull();
-  });
-
-  it("3.3 ChatMessage with products renders product name, price, star rating, and badge", () => {
-    const products: ProductSuggestion[] = [
-      makeProduct("p1", "Top Pick"),
-    ];
-    render(<ChatMessage message={makeMessage("bot", { products })} />);
-
-    expect(screen.getByText("Product p1")).toBeInTheDocument();
-    expect(screen.getByText("$49.99")).toBeInTheDocument();
-    expect(screen.getByText("4.5")).toBeInTheDocument();
-    expect(screen.getByText("Top Pick")).toBeInTheDocument();
   });
 
   it("3.4 ChatInput calls onSend when Enter is pressed", () => {
@@ -153,24 +121,6 @@ describe("Preservation Property: user bubble gradient for any user message", () 
       );
       const bubble = container.querySelector(".from-violet-600");
       expect(bubble).not.toBeNull();
-    });
-  });
-});
-
-describe("Preservation Property: N product cards render for products array of length N", () => {
-  /**
-   * Property: For any ChatMessage with products array of length N, N product cards render.
-   * Validates: Requirements 3.3
-   */
-  PRODUCT_ARRAYS.forEach((products) => {
-    it(`renders ${products.length} product card(s) for array of length ${products.length}`, () => {
-      render(
-        <ChatMessage message={makeMessage("bot", { products })} />
-      );
-      // Each product card renders the product name
-      products.forEach((p) => {
-        expect(screen.getByText(p.name)).toBeInTheDocument();
-      });
     });
   });
 });

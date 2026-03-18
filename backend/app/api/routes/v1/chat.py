@@ -74,6 +74,13 @@ router.get(
     summary="Get a customer",
 )(chat_controller.get_customer)
 
+router.get(
+    "/customers/{customer_id}/sessions",
+    response_model=list[SessionResponse],
+    summary="List customer sessions",
+    description="Returns all sessions for a customer, ordered newest first.",
+)(chat_controller.get_customer_sessions)
+
 # ── Feedback ──────────────────────────────────────────────────────────────────
 router.post(
     "/sessions/{session_id}/feedback",
