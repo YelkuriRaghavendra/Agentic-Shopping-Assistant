@@ -182,22 +182,19 @@ class MemoryService:
         ctx["last_intent"] = intent
 
         shown: list[dict] = ctx.get("shown_products", [])
-        existing_skus = {p.get("sku") for p in shown if p.get("sku")}
+        existing_ids = {p.get("productId") for p in shown if p.get("productId")}
         for product in cited_products:
-            if not product.sku or product.sku in existing_skus:
+            if product.productId in existing_ids:
                 continue
             shown.append({
-                "citation_id":   product.citation_id,
-                "title":         product.title,
-                "sku":           product.sku,
-                "url":           product.url,
+                "productId":     product.productId,
+                "productName":   product.productName,
                 "price":         product.price,
-                "image_url":     product.image_url,
-                "in_stock":      product.in_stock,
+                "productImageUrl": product.productImageUrl,
                 "rating":        product.rating,
                 "shown_at_turn": session.message_count,
             })
-            existing_skus.add(product.sku)
+            existing_ids.add(product.productId)
 
         ctx["shown_products"] = shown[-max_shown:]
         await self._session_repo.update_context(session, ctx)
@@ -272,12 +269,12 @@ class MemoryService:
 
         if cited_products and intent in ("product_search", "outfit_pairing", "gift_finder"):
             seen: list[dict] = list(profile.get("products_seen", []))
-            seen_skus = {p.get("sku") for p in seen}
+            seen_ids = {p.get("productId") for p in seen}
             today = datetime.now(UTC).date().isoformat()
             for p in cited_products:
-                if p.sku and p.sku not in seen_skus:
-                    seen.append({"sku": p.sku, "title": p.title, "date": today})
-                    seen_skus.add(p.sku)
+                if p.productId not in seen_ids:
+                    seen.append({"productId": p.productId, "productName": p.productName, "date": today})
+                    seen_ids.add(p.productId)
             profile["products_seen"] = seen[-max_seen:]
 
         # Persist people mentioned (Bug 1 fix: cross-session context)

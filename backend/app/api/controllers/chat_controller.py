@@ -223,17 +223,17 @@ class ChatController:
 
     async def add_feedback(
         self,
-        message_id: uuid.UUID,
+        session_id: uuid.UUID,
         request: FeedbackRequest,
         db: AsyncSession = Depends(get_db),
     ) -> FeedbackResponse:
-        repo = MessageRepository(db)
-        # Verify message exists
-        message = await repo.get_by_id(message_id)
-        if not message:
-            raise HTTPException(status_code=404, detail="Message not found.")
+        repo = SessionRepository(db)
+        # Verify session exists
+        session = await repo.get_by_id(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found.")
         feedback = await repo.add_feedback(
-            message_id=message_id,
+            session_id=session_id,
             rating=request.rating,
             comment=request.comment,
             feedback_type=request.feedback_type,

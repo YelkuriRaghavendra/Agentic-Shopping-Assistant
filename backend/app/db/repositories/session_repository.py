@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, UTC
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.models import Session
+from app.db.models.models import Session, SessionFeedback
 from app.db.repositories.base_repository import BaseRepository
 from app.core.config import get_settings
 
@@ -151,6 +151,34 @@ class SessionRepository(BaseRepository[Session]):
             .values(status="expired", ended_at=datetime.now(UTC))
         )
         return result.rowcount
+
+    async def add_feedback(
+        self,
+        session_id: uuid.UUID,
+        rating: int,
+        comment: str | None = None,
+        feedback_type: str | None = None,
+    ) -> SessionFeedback:
+        feedback = SessionFeedback(
+            session_id=session_id,
+            rating=rating,
+            comment=comment,
+            feedback_type=feedback_type,
+        )
+        self._db.add(feedback)
+        await self._db.flush()
+        return feedback
+
+    async def get_feedback(
+        self,
+        session_id: uuid.UUID,
+    ) -> SessionFeedback | None:
+        result = await self._db.execute(
+            select(SessionFeedback).where(
+                SessionFeedback.session_id == session_id
+            )
+        )
+        return result.scalar_one_or_none()
 
     async def get_history(
         self,

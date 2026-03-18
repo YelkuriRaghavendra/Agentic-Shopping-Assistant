@@ -36,14 +36,12 @@ def product_cards():
     from app.api.dto.chat_dto import ProductCardDTO
     return [
         ProductCardDTO(
-            citation_id="P1", title="Nike Air Max 270",
-            url="/p/nk", price=150.0, currency="USD",
-            image_url=None, sku="NK-001", in_stock=True, rating=4.7,
+            productId="P1", productName="Nike Air Max 270",
+            price=150.0, rating=4.7, productImageUrl=None,
         ),
         ProductCardDTO(
-            citation_id="P2", title="Adidas Ultraboost",
-            url="/p/ad", price=180.0, currency="USD",
-            image_url=None, sku="AD-001", in_stock=True, rating=4.8,
+            productId="P2", productName="Adidas Ultraboost",
+            price=180.0, rating=4.8, productImageUrl=None,
         ),
     ]
 

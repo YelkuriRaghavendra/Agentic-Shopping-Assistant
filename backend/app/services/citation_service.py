@@ -4,36 +4,42 @@ Citation service.
 Replaces LLM [P1][P2] markers with real product links.
 Returns both plain text and HTML versions.
 
-Plain text: markers kept for accessibility / fallback rendering
-HTML text:  markers replaced with <a href> chips for chat UI
+Plain text: markers removed, for accessibility / fallback rendering
+HTML text:  Markdown rendered to HTML, [P1] markers replaced with <a href> chips
 """
 
 import re
 import html as html_module
+import markdown as md_lib
+
 from app.api.dto.chat_dto import ProductCardDTO
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 
-_CITATION_RE  = re.compile(r'\[P(\d+)\]')
-# Convert newlines to <br> and paragraphs to <p> blocks
-_NEWLINE_RE   = re.compile(r'\n{2,}')
-_SINGLE_NL_RE = re.compile(r'\n')
+_CITATION_RE    = re.compile(r'\[P(\d+)\]')
+_PLACEHOLDER_RE = re.compile(r'CITE_P(\d+)_CITE')
+
+# nl2br converts single newlines to <br>, matching chat UI expectations
+_md = md_lib.Markdown(extensions=["nl2br"])
 
 
-def _text_to_html(text: str) -> str:
+def _to_placeholder(match: re.Match) -> str:
+    """Temporarily hide [P1] markers so the markdown parser doesn't touch them."""
+    return f"CITE_P{match.group(1)}_CITE"
+
+
+def _markdown_to_html(text: str) -> str:
     """
-    Convert plain text to safe HTML.
-    - Escapes special HTML characters
-    - Converts double newlines to paragraph breaks
-    - Converts single newlines to <br>
+    Convert LLM markdown output to safe HTML.
+
+    html.escape() is applied first to neutralise any raw HTML tags (XSS
+    prevention). It only escapes <, >, &, ", ' — none of which are part of
+    Markdown syntax (* _ # ` - etc.) — so bold/italic/lists still render.
     """
     escaped = html_module.escape(text)
-    # Double newline → paragraph break
-    paragraphed = _NEWLINE_RE.sub('</p><p>', escaped)
-    # Single newline → line break
-    lined = _SINGLE_NL_RE.sub('<br>', paragraphed)
-    return f'<p>{lined}</p>' if '\n' in text or len(text) > 80 else escaped
+    _md.reset()
+    return _md.convert(escaped)
 
 
 class CitationService:
@@ -48,49 +54,46 @@ class CitationService:
 
         Returns:
           answer       — plain text (markers removed, for accessibility/fallback)
-          answer_html  — safe HTML with <a href> product chips
-          cited        — list of ProductCardDTO for only the products actually cited
+          answer_html  — Markdown rendered to HTML with <a href> product chips
+          cited        — list of ProductCardDTO for products actually cited
 
         answer_html is ALWAYS proper HTML — never raw text passthrough.
-        Even with no citations the text is HTML-escaped and formatted.
         """
-        if not citation_map:
-            # No products retrieved — still return safe HTML
-            return llm_response, _text_to_html(llm_response), []
-
-        cited_ids:   list[str]  = []
-        seen_ids:    set[str]   = set()
-
-        # Find all cited IDs in order of appearance (deduplicated)
+        # ── Collect cited product IDs in order of appearance ─────────────
+        cited_ids: list[str] = []
+        seen_ids:  set[str]  = set()
         for match in _CITATION_RE.finditer(llm_response):
             cid = f"P{match.group(1)}"
             if cid in citation_map and cid not in seen_ids:
                 cited_ids.append(cid)
                 seen_ids.add(cid)
 
-        # Build product card list
+        # ── Build product card list ───────────────────────────────────────
         cited_products: list[ProductCardDTO] = []
         for cid in cited_ids:
             data = citation_map[cid]
             cited_products.append(ProductCardDTO(
-                citation_id=data["citation_id"],
-                title=data["title"],
-                url=data["url"],
+                productId=data["citation_id"],
+                productName=data["title"],
                 price=data.get("price"),
-                currency=data.get("currency", "USD"),
-                image_url=data.get("image_url"),
-                sku=data.get("sku"),
-                in_stock=data.get("in_stock", True),
                 rating=data.get("rating"),
-                similarity=data.get("similarity"),
+                productImageUrl=data.get("image_url"),
             ))
 
-        # Build HTML version — escape text, replace citation markers with chips
-        def _replace_with_chip(match: re.Match) -> str:
+        # ── Build HTML version ────────────────────────────────────────────
+        # Step 1: replace [P1] markers with placeholders so the markdown
+        #         parser doesn't interpret them as link references
+        with_placeholders = _CITATION_RE.sub(_to_placeholder, llm_response)
+
+        # Step 2: render markdown → HTML (handles bold, italic, lists, headers)
+        answer_html = _markdown_to_html(with_placeholders)
+
+        # Step 3: swap placeholders back to <a href> product chip HTML
+        def _chip(match: re.Match) -> str:
             cid = f"P{match.group(1)}"
             if cid not in citation_map:
-                return ""  # remove unknown citations silently
-            data = citation_map[cid]
+                return ""
+            data  = citation_map[cid]
             url   = html_module.escape(data.get("url", "#"))
             title = html_module.escape(data.get("title", "Product"))
             sku   = html_module.escape(str(data.get("sku", "")))
@@ -102,20 +105,11 @@ class CitationService:
                 f'{title} ↗</a>'
             )
 
-        # First escape the whole text, then restore citation markers,
-        # then replace them with chips
-        escaped_response = html_module.escape(llm_response)
-        # html.escape turns [P1] into [P1] (no change) — safe to sub directly
-        answer_html = _CITATION_RE.sub(_replace_with_chip, escaped_response)
-        # Format newlines as HTML
-        answer_html = _NEWLINE_RE.sub('</p><p>', answer_html)
-        answer_html = _SINGLE_NL_RE.sub('<br>', answer_html)
-        if '\n' in llm_response or len(llm_response) > 80:
-            answer_html = f'<p>{answer_html}</p>'
+        answer_html = _PLACEHOLDER_RE.sub(_chip, answer_html)
 
-        # Clean plain text — remove citation markers entirely
+        # ── Build plain text ──────────────────────────────────────────────
+        # Remove citation markers and collapse extra spaces
         answer = _CITATION_RE.sub("", llm_response).strip()
-        # Collapse multiple spaces left behind by marker removal
         answer = re.sub(r'  +', ' ', answer)
 
         logger.debug(

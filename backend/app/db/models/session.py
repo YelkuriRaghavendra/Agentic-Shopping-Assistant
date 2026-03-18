@@ -1,7 +1,7 @@
 """Session ORM model."""
 import uuid
 from datetime import datetime
-from sqlalchemy import String, Integer, DateTime, ForeignKey, Index, text
+from sqlalchemy import String, Integer, SmallInteger, DateTime, ForeignKey, Index, Text, text
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.models.base import Base, utcnow
@@ -34,6 +34,9 @@ class Session(Base):
         cascade="all, delete-orphan",
         order_by="Message.created_at",
     )
+    feedback: Mapped["SessionFeedback | None"] = relationship(
+        back_populates="session", uselist=False, cascade="all, delete-orphan"
+    )
 
     __table_args__ = (
         Index("idx_sessions_customer_id",  "customer_id"),
@@ -44,4 +47,26 @@ class Session(Base):
             "customer_id", "status",
             postgresql_where=text("status = 'active'"),
         ),
+    )
+
+
+class SessionFeedback(Base):
+    __tablename__ = "session_feedback"
+
+    id:            Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    session_id:    Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("sessions.id", ondelete="CASCADE"), nullable=False, unique=True
+    )
+    # 1 = thumbs up, -1 = thumbs down
+    rating:        Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    comment:       Mapped[str | None] = mapped_column(Text,       nullable=True)
+    # helpful | poor_suggestions | inaccurate | bad_experience | other
+    feedback_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    created_at:    Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+
+    session: Mapped["Session"] = relationship(back_populates="feedback")
+
+    __table_args__ = (
+        Index("idx_session_feedback_rating", "rating"),
+        Index("idx_session_feedback_type",   "feedback_type"),
     )

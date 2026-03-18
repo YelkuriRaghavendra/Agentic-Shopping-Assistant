@@ -152,7 +152,7 @@ class TestCitationService:
         text = "The Nike Air Max [P1] is great."
         _, _, cited = svc.process(text, citation_map)
         assert len(cited) == 1
-        assert cited[0].citation_id == "P1"
+        assert cited[0].productId == "P1"
 
     def test_html_contains_link(self, svc, citation_map):
         text = "Check [P1]."

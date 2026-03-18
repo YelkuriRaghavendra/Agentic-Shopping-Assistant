@@ -83,22 +83,22 @@ def upgrade() -> None:
         postgresql_using="gin",
     )
 
-    # message_feedback
+    # session_feedback
     op.create_table(
-        "message_feedback",
+        "session_feedback",
         sa.Column("id",            postgresql.UUID(as_uuid=True), primary_key=True, server_default=sa.text("uuid_generate_v4()")),
-        sa.Column("message_id",    postgresql.UUID(as_uuid=True), sa.ForeignKey("messages.id", ondelete="CASCADE"), nullable=False, unique=True),
+        sa.Column("session_id",    postgresql.UUID(as_uuid=True), sa.ForeignKey("sessions.id", ondelete="CASCADE"), nullable=False, unique=True),
         sa.Column("rating",        sa.SmallInteger(), nullable=False),
         sa.Column("comment",       sa.Text(),     nullable=True),
         sa.Column("feedback_type", sa.String(50), nullable=True),
         sa.Column("created_at",    sa.DateTime(timezone=True), nullable=False, server_default=sa.text("NOW()")),
     )
-    op.create_index("idx_feedback_rating", "message_feedback", ["rating"])
-    op.create_index("idx_feedback_type",   "message_feedback", ["feedback_type"])
+    op.create_index("idx_session_feedback_rating", "session_feedback", ["rating"])
+    op.create_index("idx_session_feedback_type",   "session_feedback", ["feedback_type"])
 
 
 def downgrade() -> None:
-    op.drop_table("message_feedback")
+    op.drop_table("session_feedback")
     op.drop_table("messages")
     op.drop_table("sessions")
     op.drop_table("customers")

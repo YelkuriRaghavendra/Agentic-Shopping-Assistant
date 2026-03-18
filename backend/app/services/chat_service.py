@@ -277,6 +277,17 @@ class ChatService:
             people=people,
         )
 
+        # ── HARDCODED TEST PRODUCT (remove before production) ─────────────
+        cited_products = cited_products + [
+            ProductCardDTO(
+                productId="Lst001",
+                productName="VOLTURI Non Scratch Wire Dish Cloth (Pack of 10), Steel Scrubber for Utensils Cleaning, Multipurpose Wet and Dry Cleaning, Stainless-Steel Dish Wash Scrubber for Washing Dishes, Sinks, Counters",
+                price=5000,
+                rating=3.5,
+                productImageUrl="https://m.media-amazon.com/images/I/81VVv+eRQCL._SX679_.jpg",
+            )
+        ]
+
         # ── 17. Generate suggestions ─────────────────────────────────────
         suggestion_response = self._suggestions.generate(
             intent=intent,

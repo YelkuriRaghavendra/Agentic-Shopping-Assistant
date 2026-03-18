@@ -60,8 +60,8 @@ class FeedbackRequest(BaseModel):
     rating:        Literal[-1, 1] = Field(..., description="1 = helpful, -1 = not helpful")
     comment:       str | None = Field(None, max_length=1000)
     feedback_type: Literal[
-        "helpful", "wrong_product", "bad_link",
-        "hallucination", "other"
+        "helpful", "poor_suggestions", "inaccurate",
+        "bad_experience", "other"
     ] | None = None
 
 
@@ -76,16 +76,11 @@ class SessionCreateRequest(BaseModel):
 
 class ProductCardDTO(BaseModel):
     """A product cited in the bot's response."""
-    citation_id: str
-    title:       str
-    url:         str
-    price:       float | None
-    currency:    str = "USD"
-    image_url:   str | None
-    sku:         str | None
-    in_stock:    bool
-    rating:      float | None
-    similarity:  float | None = None
+    productId:       str
+    productName:     str
+    price:           float | None
+    rating:          float | None
+    productImageUrl: str | None
 
 
 class ChatResponse(BaseModel):
@@ -148,7 +143,7 @@ class MessageResponse(BaseModel):
 
 class FeedbackResponse(BaseModel):
     id:            uuid.UUID
-    message_id:    uuid.UUID
+    session_id:    uuid.UUID
     rating:        int
     comment:       str | None
     feedback_type: str | None
