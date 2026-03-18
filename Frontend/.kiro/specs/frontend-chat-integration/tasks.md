@@ -275,6 +275,56 @@ Replace the mock-only Next.js chat frontend with a fully integrated implementati
     - Render 3 animated `div` placeholders (`animate-pulse bg-gray-700 rounded-xl`) of alternating widths to mimic user/bot bubbles while history loads
     - Shown only when `isHistoryLoading` is true; hidden once messages are available
 
+- [x] 19. Fix `ProductCardDTO` type to match actual backend response shape
+  - [x] 19.1 Update `types/chat.types.ts` — `ProductCardDTO` fields
+    - Replace `citation_id`, `title`, `url`, `currency`, `image_url`, `sku`, `in_stock`, `similarity` with the actual backend fields: `productId`, `productName`, `price`, `rating`, `productImageUrl`
+    - Add `citedProducts?: ProductCardDTO[]` to `ChatMessageUI`
+    - _Aligns with `ProductCardDTO` in `backend/app/api/dto/chat_dto.py`_
+
+  - [x] 19.2 Update `useChat` to map `cited_products` and `suggestions` onto `ChatMessageUI`
+    - When processing a `ChatResponse`, set `citedProducts: response.cited_products` and `suggestions: response.suggestions` on the bot `ChatMessageUI` appended to `messages`
+    - Expose `sendProductMessage(productId: string, productName: string)` from `useChat`:
+      - Appends a user bubble with `content: productName` to `messages` (display text only)
+      - Calls `POST /api/v1/chat` with `message: productId` (the raw ID is what the API receives)
+      - Response handling is identical to `sendMessage`
+    - _Requirements: cited_products and suggestions must be preserved on the message object for rendering_
+
+- [x] 20. Create `ProductSlider` component
+  - [x] 20.1 Create `components/ProductSlider.tsx` using shadcn Card
+    - Install shadcn card component if not present: `npx shadcn@latest add card`
+    - Render a horizontally scrollable container (`overflow-x-auto`, `scroll-snap-type-x mandatory`, `flex gap-3`) of product cards
+    - Each card (`scroll-snap-align-start`, fixed width ~200px) shows:
+      - Product image (`productImageUrl`) with `<img>` and a grey placeholder div as fallback
+      - `productName` truncated to 2 lines (`line-clamp-2`)
+      - Price formatted as `₹{price}` (or "N/A" if null)
+      - Star rating display (filled/empty stars based on `rating`)
+      - "Preview" button (`variant="outline"` shadcn Button, opens `#` for now — no URL in DTO)
+    - Single-select: clicking a card toggles its selected state (highlighted border `ring-2 ring-violet-500`)
+    - A "Send" button appears at the bottom-right of the slider when a card is selected; clicking it calls `onSelectProduct(product.productId, product.productName)` and clears selection
+    - Props: `{ products: ProductCardDTO[]; onSelectProduct: (productId: string, productName: string) => void }`
+    - _Design: ProductSlider section_
+
+  - [x] 20.2 Integrate `ProductSlider` into `MessageBubble`
+    - After the `answer_html` / plain text content, conditionally render `<ProductSlider>` when `message.citedProducts` is non-empty
+    - Pass `onSelectProduct` down from `ChatWindow` → `MessageBubble` → `ProductSlider`
+    - `ChatWindow` receives `sendProductMessage` from `useChat` and passes it as `onSelectProduct`
+    - Update `ChatWindowProps` to include `sendProductMessage: (productId: string, productName: string) => void`
+    - Update `MessageBubbleProps` to include `onSelectProduct?: (productId: string, productName: string) => void`
+
+- [x] 21. Create `SuggestionChips` component
+  - [x] 21.1 Create `components/SuggestionChips.tsx`
+    - Render a wrapping flex row of pill buttons for each `SuggestionChip`
+    - Each pill shows `{chip.icon} {chip.label}` using a shadcn `Button` with `variant="outline"` and `size="sm"`, rounded-full styling
+    - Clicking a chip calls `onSelectSuggestion(chip.message)` and hides the entire chip row (one-shot: set local `dismissed` state to true)
+    - Props: `{ suggestions: SuggestionChip[]; onSelectSuggestion: (message: string) => void }`
+    - _Design: SuggestionChips section_
+
+  - [x] 21.2 Integrate `SuggestionChips` into `MessageBubble`
+    - After the `ProductSlider` (or directly after the text content if no products), conditionally render `<SuggestionChips>` when `message.suggestions` is non-empty
+    - Pass `onSelectSuggestion` down from `ChatWindow` → `MessageBubble` → `SuggestionChips`
+    - `ChatWindow` passes `sendMessage` as `onSelectSuggestion` (suggestion `message` field is sent as-is to the API and shown as the user bubble)
+    - Update `MessageBubbleProps` to include `onSelectSuggestion?: (message: string) => void`
+
 ## Notes
 
 - Tasks marked with `*` are optional and can be skipped for a faster MVP
@@ -285,3 +335,5 @@ Replace the mock-only Next.js chat frontend with a fully integrated implementati
 - The `httpMethods.ts` file requires no changes — it already delegates to `httpClient`
 - All new components must use shadcn `Button` / `Input` primitives and `lucide-react` icons
 - Slash commands (`/start`, `/end`) are intercepted before the normal chat POST — they never reach the LLM
+- `ProductSlider` sends `productId` to the API but shows `productName` as the user bubble — these two values must never be swapped
+- `SuggestionChips` are one-shot per bot response — they disappear after any chip is tapped or a new message is sent

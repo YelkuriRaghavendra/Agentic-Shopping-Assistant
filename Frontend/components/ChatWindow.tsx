@@ -11,6 +11,7 @@ import type React from "react";
 export interface ChatWindowProps {
   messages: ChatMessageUI[];
   sendMessage: (text: string) => void;
+  sendProductMessage: (productId: string, productName: string) => void;
   isLoading: boolean;
   isTyping: boolean;
   inputDisabled: boolean;
@@ -32,6 +33,7 @@ function HistorySkeleton() {
 export function ChatWindow({
   messages,
   sendMessage,
+  sendProductMessage,
   isLoading,
   isTyping,
   inputDisabled,
@@ -65,7 +67,12 @@ export function ChatWindow({
         ) : (
           <AnimatePresence initial={false}>
             {messages.map((msg) => (
-              <MessageBubble key={msg.id} message={msg} />
+              <MessageBubble
+                key={msg.id}
+                message={msg}
+                onSelectProduct={sendProductMessage}
+                onSelectSuggestion={sendMessage}
+              />
             ))}
 
             {isTyping && <TypingIndicator key="typing" />}

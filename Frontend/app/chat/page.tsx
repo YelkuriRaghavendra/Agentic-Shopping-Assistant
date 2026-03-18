@@ -47,6 +47,7 @@ export default function ChatPage() {
           <ChatWindow
             messages={chat.messages}
             sendMessage={chat.sendMessage}
+            sendProductMessage={chat.sendProductMessage}
             isLoading={chat.isLoading}
             isTyping={chat.isTyping}
             inputDisabled={customer.isLoading}

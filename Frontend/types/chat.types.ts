@@ -37,16 +37,11 @@ export interface FeedbackRequest {
 // ── Outbound (received from API) ──────────────────────────────────────────
 
 export interface ProductCardDTO {
-  citation_id: string;
-  title: string;
-  url: string;
+  productId: string;
+  productName: string;
   price: number | null;
-  currency: string;
-  image_url: string | null;
-  sku: string | null;
-  in_stock: boolean;
   rating: number | null;
-  similarity: number | null;
+  productImageUrl: string | null;
 }
 
 export interface SuggestionChip {
@@ -114,5 +109,6 @@ export interface ChatMessageUI {
   content: string;
   answerHtml?: string;
   timestamp: Date;
+  citedProducts?: ProductCardDTO[];
   suggestions?: SuggestionChip[];
 }

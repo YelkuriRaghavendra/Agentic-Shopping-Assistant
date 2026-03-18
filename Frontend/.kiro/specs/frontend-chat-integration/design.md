@@ -119,6 +119,8 @@ Frontend/
 ├── components/
 │   ├── ChatWindow.tsx         ← message list + scroll anchor
 │   ├── MessageBubble.tsx      ← renders answer_html safely (replaces ChatMessage)
+│   ├── ProductSlider.tsx      ← horizontal scrollable product card carousel
+│   ├── SuggestionChips.tsx    ← tappable suggestion pill row
 │   ├── ChatInput.tsx          ← text input + send button
 │   ├── TypingIndicator.tsx    ← animated dots
 │   ├── SessionSidebar.tsx     ← session list with skeleton loader
@@ -233,6 +235,52 @@ Unchanged — animated dots, no props needed.
 
 ---
 
+#### `ProductSlider` (new)
+
+A horizontal scrollable card carousel rendered below a bot `MessageBubble` when `cited_products` is non-empty. Built with shadcn `Card` primitives and a CSS scroll-snap container.
+
+Each card shows:
+- Product image (`productImageUrl`) with a fallback placeholder
+- Product name (`productName`) truncated to 2 lines
+- Price formatted as currency
+- Star rating
+- "Preview" button (opens product URL in a new tab — future use, can be a no-op initially)
+- A selectable state: clicking a card highlights it and queues the product for sending
+
+Selection behaviour:
+- Only one product can be selected at a time (single-select)
+- When selected, a "Send" button appears below the slider (or the card itself becomes a send trigger)
+- Clicking send calls `sendMessage` with `message = productId` (sent to API) but displays `productName` as the user bubble text in the UI
+- After sending, the selection is cleared
+
+Props:
+```ts
+interface ProductSliderProps {
+  products: ProductCardDTO[];
+  onSelectProduct: (productId: string, productName: string) => void;
+}
+```
+
+`onSelectProduct` is wired to a specialised `sendProductMessage(productId, productName)` exposed by `useChat`. Internally `sendProductMessage` calls `POST /api/v1/chat` with `message: productId` but appends a user bubble with `content: productName` to the local message list.
+
+#### `SuggestionChips` (new)
+
+A row of tappable pill buttons rendered below the `ProductSlider` (or directly below the bot bubble when no products are present). Shown only when `suggestions` is non-empty.
+
+Each chip shows `icon + label`. Clicking a chip calls `sendMessage(chip.message)` — the full `message` field is sent to the API and also displayed as the user bubble text.
+
+Props:
+```ts
+interface SuggestionChipsProps {
+  suggestions: SuggestionChip[];
+  onSelectSuggestion: (message: string) => void;
+}
+```
+
+After a chip is tapped the entire chip row disappears (one-shot — suggestions are per-response, not persistent).
+
+---
+
 ## Data Models
 
 ### TypeScript interfaces (matching backend Pydantic DTOs)
@@ -277,16 +325,11 @@ export interface FeedbackRequest {
 // ── Outbound (received from API) ──────────────────────────────────────────
 
 export interface ProductCardDTO {
-  citation_id: string;
-  title: string;
-  url: string;
+  productId: string;
+  productName: string;
   price: number | null;
-  currency: string;
-  image_url: string | null;
-  sku: string | null;
-  in_stock: boolean;
   rating: number | null;
-  similarity: number | null;
+  productImageUrl: string | null;
 }
 
 export interface SuggestionChip {
@@ -351,10 +394,11 @@ export interface MessageHistoryResponse {
 export interface ChatMessageUI {
   id: string;
   role: MessageRole;
-  content: string;          // plain text (fallback)
+  content: string;          // plain text (fallback / user bubble display text)
   answerHtml?: string;      // sanitised HTML from answer_html
   timestamp: Date;
-  suggestions?: SuggestionChip[];
+  citedProducts?: ProductCardDTO[];   // product cards to render in ProductSlider
+  suggestions?: SuggestionChip[];     // suggestion chips to render below bubble
 }
 ```
 
@@ -500,6 +544,7 @@ Manages the active message list and send-message flow.
 interface UseChatReturn {
   messages: ChatMessageUI[];
   sendMessage: (text: string) => void;
+  sendProductMessage: (productId: string, productName: string) => void;
   isLoading: boolean;
   isTyping: boolean;
   sessionEnded: boolean;
@@ -516,10 +561,14 @@ interface UseChatReturn {
    - Append user message to `messages`.
    - Set `isTyping = true`.
    - Call `POST /api/v1/chat` with `{ message: text, customer_id, session_id }`.
-   - On success: set `activeSessionId` from `response.session_id`, append bot `ChatMessageUI` with `answerHtml` set to sanitised `response.answer_html`.
+   - On success: set `activeSessionId` from `response.session_id`, append bot `ChatMessageUI` with `answerHtml`, `citedProducts`, and `suggestions` from the response.
    - On error: append bot error message, set `error`.
    - Always: `isTyping = false`.
-3. When `sessionId` prop changes (user selects a different session from sidebar), load history via `GET /api/v1/chat/sessions/{id}/messages` and replace `messages`.
+3. `sendProductMessage(productId, productName)`:
+   - Appends a user bubble with `content: productName` (display text) to `messages`.
+   - Calls `POST /api/v1/chat` with `message: productId` (the ID is what the API receives).
+   - Otherwise identical to `sendMessage` for the response handling path.
+4. When `sessionId` prop changes (user selects a different session from sidebar), load history via `GET /api/v1/chat/sessions/{id}/messages` and replace `messages`.
 
 **API calls:**
 - `POST /api/v1/chat` → `ChatResponse`
