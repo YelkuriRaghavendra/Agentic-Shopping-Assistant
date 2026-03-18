@@ -132,7 +132,7 @@ class SuggestionService:
             if len(cited) >= 2:
                 chips.append(SuggestionChip(
                     label="Compare top 2",
-                    message=f"Compare {cited[0].title} vs {cited[1].title}",
+                    message=f"Compare {cited[0].productName} vs {cited[1].productName}",
                     icon="⚖️", chip_type="action",
                 ))
 
@@ -193,8 +193,8 @@ class SuggestionService:
         ]
         if cited:
             chips.append(SuggestionChip(
-                label=f"Buy {cited[0].title.split()[0]}",
-                message=f"I want to buy the {cited[0].title}",
+                label=f"Buy {cited[0].productName.split()[0]}",
+                message=f"I want to buy the {cited[0].productName}",
                 icon="🛒", chip_type="purchase_intent",
             ))
         return chips
@@ -253,7 +253,7 @@ class SuggestionService:
         if cited:
             chips.insert(0, SuggestionChip(
                 label="Tell me more",
-                message=f"Tell me more about {cited[0].title}",
+                message=f"Tell me more about {cited[0].productName}",
                 icon="ℹ️", chip_type="quick_reply",
             ))
         return chips

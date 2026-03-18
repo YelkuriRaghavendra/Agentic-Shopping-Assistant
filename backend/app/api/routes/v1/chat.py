@@ -83,8 +83,8 @@ router.get(
 
 # ── Feedback ──────────────────────────────────────────────────────────────────
 router.post(
-    "/messages/{message_id}/feedback",
+    "/sessions/{session_id}/feedback",
     response_model=FeedbackResponse,
-    summary="Submit message feedback",
-    description="Thumbs up (1) or thumbs down (-1) on any bot message.",
+    summary="Submit session feedback",
+    description="Thumbs up (1) or thumbs down (-1) on a completed session.",
 )(chat_controller.add_feedback)

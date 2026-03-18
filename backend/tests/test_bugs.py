@@ -229,6 +229,26 @@ class TestAnswerHtml:
         # & should be escaped in the URL
         assert "&amp;" in html or "shoe" in html.lower()
 
+    def test_markdown_bold_rendered(self, citation_svc):
+        """LLM bold markdown is converted to <strong> tags."""
+        text = "The **Nike Air Max** is great."
+        _, html, _ = citation_svc.process(text, {})
+        assert "<strong>" in html
+        assert "**" not in html
+
+    def test_markdown_bullet_list_rendered(self, citation_svc):
+        """LLM bullet lists are converted to <ul><li> tags."""
+        text = "Options:\n\n- Option A\n- Option B"
+        _, html, _ = citation_svc.process(text, {})
+        assert "<li>" in html
+        assert "- Option" not in html
+
+    def test_markdown_numbered_list_rendered(self, citation_svc):
+        """LLM numbered lists are converted to <ol><li> tags."""
+        text = "Steps:\n\n1. First step\n2. Second step"
+        _, html, _ = citation_svc.process(text, {})
+        assert "<ol>" in html or "<li>" in html
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Bug 3 — JSON config drives all hard-coded values
@@ -357,9 +377,12 @@ class TestModelSplit:
         assert Session.__tablename__ == "sessions"
 
     def test_import_message_from_split_file(self):
-        from app.db.models.message import Message, MessageFeedback
+        from app.db.models.message import Message
         assert Message.__tablename__ == "messages"
-        assert MessageFeedback.__tablename__ == "message_feedback"
+
+    def test_import_session_feedback_from_split_file(self):
+        from app.db.models.session import SessionFeedback
+        assert SessionFeedback.__tablename__ == "session_feedback"
 
     def test_import_all_from_package(self):
         from app.db.models import Customer, Session, Message

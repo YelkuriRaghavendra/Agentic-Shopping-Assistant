@@ -1,13 +1,13 @@
 """
 Message repository.
-All message and feedback DB operations live here.
+All message DB operations live here.
 """
 
 import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.models import Message, MessageFeedback
+from app.db.models.models import Message
 from app.db.repositories.base_repository import BaseRepository
 
 
@@ -75,31 +75,3 @@ class MessageRepository(BaseRepository[Message]):
         result = await self._db.execute(query)
         # Reverse so messages are in chronological order
         return list(reversed(result.scalars().all()))
-
-    async def add_feedback(
-        self,
-        message_id: uuid.UUID,
-        rating: int,
-        comment: str | None = None,
-        feedback_type: str | None = None,
-    ) -> MessageFeedback:
-        feedback = MessageFeedback(
-            message_id=message_id,
-            rating=rating,
-            comment=comment,
-            feedback_type=feedback_type,
-        )
-        self._db.add(feedback)
-        await self._db.flush()
-        return feedback
-
-    async def get_feedback(
-        self,
-        message_id: uuid.UUID,
-    ) -> MessageFeedback | None:
-        result = await self._db.execute(
-            select(MessageFeedback).where(
-                MessageFeedback.message_id == message_id
-            )
-        )
-        return result.scalar_one_or_none()
