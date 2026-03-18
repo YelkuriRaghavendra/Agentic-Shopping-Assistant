@@ -1,12 +1,10 @@
-import { clsx, type ClassValue } from "clsx";
-import { twMerge } from "tailwind-merge";
-import { format } from "date-fns";
+import { clsx, type ClassValue } from "clsx"
+import { twMerge } from "tailwind-merge"
 
 export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
+  return twMerge(clsx(inputs))
 }
 
 export function formatTimestamp(date: Date): string {
-  return format(date, "h:mm a");
+  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
-

@@ -4,13 +4,17 @@ import { motion } from "framer-motion";
 import { Bot, User } from "lucide-react";
 import { cn, formatTimestamp } from "@/lib/utils";
 import { sanitizeHtml } from "@/lib/sanitize";
+import { ProductSlider } from "@/components/ProductSlider";
+import { SuggestionChips } from "@/components/SuggestionChips";
 import type { ChatMessageUI } from "@/types/chat.types";
 
-interface MessageBubbleProps {
+export interface MessageBubbleProps {
   message: ChatMessageUI;
+  onSelectProduct?: (productId: string, productName: string) => void;
+  onSelectSuggestion?: (message: string) => void;
 }
 
-export function MessageBubble({ message }: MessageBubbleProps) {
+export function MessageBubble({ message, onSelectProduct, onSelectSuggestion }: MessageBubbleProps) {
   const isUser = message.role === "user";
 
   return (
@@ -65,6 +69,16 @@ export function MessageBubble({ message }: MessageBubbleProps) {
             message.content
           )}
         </motion.div>
+
+        {/* Product slider */}
+        {!isUser && message.citedProducts && message.citedProducts.length > 0 && onSelectProduct && (
+          <ProductSlider products={message.citedProducts} onSelectProduct={onSelectProduct} />
+        )}
+
+        {/* Suggestion chips */}
+        {!isUser && message.suggestions && message.suggestions.length > 0 && onSelectSuggestion && (
+          <SuggestionChips suggestions={message.suggestions} onSelectSuggestion={onSelectSuggestion} />
+        )}
 
         {/* Timestamp */}
         <span className="text-[11px] text-muted-foreground">

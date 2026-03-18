@@ -13,6 +13,7 @@ import type {
 interface UseChatReturn {
   messages: ChatMessageUI[];
   sendMessage: (text: string) => void;
+  sendProductMessage: (productId: string, productName: string) => void;
   isLoading: boolean;
   isTyping: boolean;
   isHistoryLoading: boolean;
@@ -192,6 +193,7 @@ export function useChat(
           content: data.answer,
           answerHtml: data.answer_html || undefined,
           timestamp: new Date(),
+          citedProducts: data.cited_products,
           suggestions: data.suggestions,
         };
 
@@ -215,9 +217,65 @@ export function useChat(
     [sessionEnded, isLoading, customerId, activeSessionId, scrollToBottom]
   );
 
+  const sendProductMessage = useCallback(
+    async (productId: string, productName: string) => {
+      if (sessionEnded || isLoading) return;
+
+      const userMessage: ChatMessageUI = {
+        id: generateId(),
+        role: "user",
+        content: productName,
+        timestamp: new Date(),
+      };
+
+      setMessages((prev) => [...prev, userMessage]);
+      setIsTyping(true);
+      setIsLoading(true);
+      setError(null);
+      scrollToBottom();
+
+      const body: ChatRequest = {
+        message: productId,
+        ...(customerId ? { customer_id: customerId } : {}),
+        ...(activeSessionId ? { session_id: activeSessionId } : {}),
+      };
+
+      try {
+        const data = await httpClient.post<ChatResponse>(endpoints.chat, body);
+        setActiveSessionId(data.session_id);
+        const botMessage: ChatMessageUI = {
+          id: data.message_id,
+          role: "bot",
+          content: data.answer,
+          answerHtml: data.answer_html || undefined,
+          timestamp: new Date(),
+          citedProducts: data.cited_products,
+          suggestions: data.suggestions,
+        };
+        setMessages((prev) => [...prev, botMessage]);
+        scrollToBottom();
+      } catch (err) {
+        const errorMessage: ChatMessageUI = {
+          id: generateId(),
+          role: "bot",
+          content: "Oops, something went wrong. Please try again.",
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, errorMessage]);
+        setError(err instanceof Error ? err.message : "Unknown error");
+        scrollToBottom();
+      } finally {
+        setIsTyping(false);
+        setIsLoading(false);
+      }
+    },
+    [sessionEnded, isLoading, customerId, activeSessionId, scrollToBottom]
+  );
+
   return {
     messages,
     sendMessage,
+    sendProductMessage,
     isLoading,
     isTyping,
     isHistoryLoading,
