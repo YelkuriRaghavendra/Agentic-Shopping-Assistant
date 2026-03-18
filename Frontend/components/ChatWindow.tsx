@@ -2,14 +2,31 @@
 
 import { AnimatePresence } from "framer-motion";
 import { Bot, Sparkles } from "lucide-react";
-import { ChatMessage } from "./ChatMessage";
+import { MessageBubble } from "./MessageBubble";
 import { ChatInput } from "./ChatInput";
 import { TypingIndicator } from "./TypingIndicator";
-import { useChat } from "@/hooks/useChat";
+import type { ChatMessageUI } from "@/types/chat.types";
+import type React from "react";
 
-export function ChatWindow() {
-  const { messages, sendMessage, isLoading, isTyping, bottomRef } = useChat();
+export interface ChatWindowProps {
+  messages: ChatMessageUI[];
+  sendMessage: (text: string) => void;
+  isLoading: boolean;
+  isTyping: boolean;
+  inputDisabled: boolean;
+  sessionEnded: boolean;
+  bottomRef: React.RefObject<HTMLDivElement>;
+}
 
+export function ChatWindow({
+  messages,
+  sendMessage,
+  isLoading,
+  isTyping,
+  inputDisabled,
+  sessionEnded,
+  bottomRef,
+}: ChatWindowProps) {
   return (
     <div className="flex h-full w-full flex-col overflow-hidden rounded-2xl border border-white/10 bg-[hsl(var(--background))] shadow-2xl shadow-black/40">
       {/* Header */}
@@ -33,7 +50,7 @@ export function ChatWindow() {
       <div className="flex-1 overflow-y-auto py-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/10">
         <AnimatePresence initial={false}>
           {messages.map((msg) => (
-            <ChatMessage key={msg.id} message={msg} />
+            <MessageBubble key={msg.id} message={msg} />
           ))}
 
           {isTyping && <TypingIndicator key="typing" />}
@@ -44,7 +61,7 @@ export function ChatWindow() {
       </div>
 
       {/* Input */}
-      <ChatInput onSend={sendMessage} disabled={isLoading} />
+      <ChatInput onSend={sendMessage} disabled={inputDisabled || sessionEnded} />
     </div>
   );
 }

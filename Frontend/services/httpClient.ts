@@ -1,6 +1,5 @@
 /**
- * httpClient — base abstraction for all HTTP calls.
- * Currently wired to mock responses; swap baseURL + fetch for real API.
+ * httpClient — fetch-based HTTP client for all API calls.
  */
 
 export interface RequestConfig {
@@ -13,24 +12,42 @@ export interface HttpClient {
   post<T>(url: string, body: unknown, config?: RequestConfig): Promise<T>;
 }
 
-class MockHttpClient implements HttpClient {
-  private readonly baseURL: string;
-
-  constructor(baseURL = "/api") {
-    this.baseURL = baseURL;
-  }
-
-  async get<T>(url: string, _config?: RequestConfig): Promise<T> {
-    console.debug(`[GET] ${this.baseURL}${url}`);
-    // In a real implementation: return fetch(`${this.baseURL}${url}`, { ...config }).then(r => r.json())
-    throw new Error("GET not implemented in mock mode — use POST /chat");
-  }
-
-  async post<T>(url: string, body: unknown, _config?: RequestConfig): Promise<T> {
-    console.debug(`[POST] ${this.baseURL}${url}`, body);
-    // Delegates to mock handler — real impl would call fetch here
-    return Promise.resolve(body as T);
+export class HttpError extends Error {
+  constructor(public readonly status: number, public readonly body: string) {
+    super(`HTTP ${status}: ${body}`);
   }
 }
 
-export const httpClient: HttpClient = new MockHttpClient();
+export class FetchHttpClient implements HttpClient {
+  async get<T>(url: string, config?: RequestConfig): Promise<T> {
+    const res = await fetch(url, {
+      method: "GET",
+      headers: { ...config?.headers },
+      signal: config?.signal,
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      throw new HttpError(res.status, body);
+    }
+    return res.json() as Promise<T>;
+  }
+
+  async post<T>(url: string, body: unknown, config?: RequestConfig): Promise<T> {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...config?.headers,
+      },
+      body: JSON.stringify(body),
+      signal: config?.signal,
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new HttpError(res.status, text);
+    }
+    return res.json() as Promise<T>;
+  }
+}
+
+export const httpClient: HttpClient = new FetchHttpClient();

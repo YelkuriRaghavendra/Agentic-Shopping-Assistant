@@ -6,11 +6,11 @@ import { cn, formatTimestamp } from "@/lib/utils";
 import { sanitizeHtml } from "@/lib/sanitize";
 import type { ChatMessageUI } from "@/types/chat.types";
 
-interface ChatMessageProps {
+interface MessageBubbleProps {
   message: ChatMessageUI;
 }
 
-export function ChatMessage({ message }: ChatMessageProps) {
+export function MessageBubble({ message }: MessageBubbleProps) {
   const isUser = message.role === "user";
 
   return (
@@ -32,7 +32,11 @@ export function ChatMessage({ message }: ChatMessageProps) {
             : "bg-gradient-to-br from-violet-500 to-indigo-600"
         )}
       >
-        {isUser ? <User className="h-4 w-4 text-white" /> : <Bot className="h-4 w-4 text-white" />}
+        {isUser ? (
+          <User className="h-4 w-4 text-white" />
+        ) : (
+          <Bot className="h-4 w-4 text-white" />
+        )}
       </div>
 
       {/* Bubble */}
