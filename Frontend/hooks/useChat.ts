@@ -1,24 +1,40 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
-import { useMutation } from "@tanstack/react-query";
-import { sendChatMessage } from "@/services/chatService";
-import { generateId } from "@/lib/utils";
-import type { ChatMessage, SendMessagePayload } from "@/types/chat.types";
+import { useState, useCallback, useRef, useEffect } from "react";
+import { httpClient } from "@/services/httpClient";
+import { endpoints } from "@/config/config";
+import type {
+  ChatMessageUI,
+  ChatRequest,
+  ChatResponse,
+  MessageHistoryResponse,
+} from "@/types/chat.types";
 
-const CONVERSATION_ID = generateId();
+interface UseChatReturn {
+  messages: ChatMessageUI[];
+  sendMessage: (text: string) => void;
+  isLoading: boolean;
+  isTyping: boolean;
+  sessionEnded: boolean;
+  activeSessionId: string | null;
+  error: string | null;
+  bottomRef: React.RefObject<HTMLDivElement>;
+}
 
-const WELCOME_MESSAGE: ChatMessage = {
-  id: "welcome",
-  role: "bot",
-  content:
-    "Hey there! 👋 I'm your personal shopping assistant. Ask me about shoes, headphones, laptops, watches, or anything else you're looking for!",
-  timestamp: new Date(),
-};
+function generateId(): string {
+  return crypto.randomUUID();
+}
 
-export function useChat() {
-  const [messages, setMessages] = useState<ChatMessage[]>([WELCOME_MESSAGE]);
+export function useChat(
+  customerId: string | null,
+  sessionId: string | null
+): UseChatReturn {
+  const [messages, setMessages] = useState<ChatMessageUI[]>([]);
   const [isTyping, setIsTyping] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(sessionId);
+  const [sessionEnded, setSessionEnded] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
   const scrollToBottom = useCallback(() => {
@@ -27,43 +43,45 @@ export function useChat() {
     }, 50);
   }, []);
 
-  const { mutate, isPending, error } = useMutation({
-    mutationFn: (payload: SendMessagePayload) => sendChatMessage(payload),
-    onMutate: () => {
-      setIsTyping(true);
-      scrollToBottom();
-    },
-    onSuccess: (data) => {
-      setIsTyping(false);
-      const botMessage: ChatMessage = {
-        id: data.id,
-        role: "bot",
-        content: data.content,
-        timestamp: data.timestamp,
-        products: data.products,
-      };
-      setMessages((prev) => [...prev, botMessage]);
-      scrollToBottom();
-    },
-    onError: () => {
-      setIsTyping(false);
-      const errorMessage: ChatMessage = {
-        id: generateId(),
-        role: "bot",
-        content: "Oops, something went wrong. Please try again! 😅",
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, errorMessage]);
-      scrollToBottom();
-    },
-  });
+  // Load message history when sessionId prop changes
+  useEffect(() => {
+    if (!sessionId) return;
+
+    let cancelled = false;
+
+    async function loadHistory() {
+      try {
+        const data = await httpClient.get<MessageHistoryResponse>(
+          endpoints.sessionMessages(sessionId!)
+        );
+        if (cancelled) return;
+
+        const loaded: ChatMessageUI[] = data.messages.map((msg) => ({
+          id: msg.id,
+          role: msg.role === "user" ? "user" : "bot",
+          content: msg.content,
+          timestamp: new Date(msg.created_at),
+        }));
+        setMessages(loaded);
+        setActiveSessionId(sessionId);
+        scrollToBottom();
+      } catch {
+        // preserve existing messages on history load error
+      }
+    }
+
+    loadHistory();
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId, scrollToBottom]);
 
   const sendMessage = useCallback(
-    (text: string) => {
+    async (text: string) => {
       const trimmed = text.trim();
-      if (!trimmed || isPending) return;
+      if (!trimmed || sessionEnded || isLoading) return;
 
-      const userMessage: ChatMessage = {
+      const userMessage: ChatMessageUI = {
         id: generateId(),
         role: "user",
         content: trimmed,
@@ -71,18 +89,58 @@ export function useChat() {
       };
 
       setMessages((prev) => [...prev, userMessage]);
+      setIsTyping(true);
+      setIsLoading(true);
+      setError(null);
       scrollToBottom();
 
-      mutate({ message: trimmed, conversationId: CONVERSATION_ID });
+      const body: ChatRequest = {
+        message: trimmed,
+        ...(customerId ? { customer_id: customerId } : {}),
+        ...(activeSessionId ? { session_id: activeSessionId } : {}),
+      };
+
+      try {
+        const data = await httpClient.post<ChatResponse>(endpoints.chat, body);
+
+        setActiveSessionId(data.session_id);
+
+        const botMessage: ChatMessageUI = {
+          id: data.message_id,
+          role: "bot",
+          content: data.answer,
+          answerHtml: data.answer_html || undefined,
+          timestamp: new Date(),
+          suggestions: data.suggestions,
+        };
+
+        setMessages((prev) => [...prev, botMessage]);
+        scrollToBottom();
+      } catch (err) {
+        const errorMessage: ChatMessageUI = {
+          id: generateId(),
+          role: "bot",
+          content: "Oops, something went wrong. Please try again.",
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, errorMessage]);
+        setError(err instanceof Error ? err.message : "Unknown error");
+        scrollToBottom();
+      } finally {
+        setIsTyping(false);
+        setIsLoading(false);
+      }
     },
-    [isPending, mutate, scrollToBottom]
+    [sessionEnded, isLoading, customerId, activeSessionId, scrollToBottom]
   );
 
   return {
     messages,
     sendMessage,
-    isLoading: isPending,
+    isLoading,
     isTyping,
+    sessionEnded,
+    activeSessionId,
     error,
     bottomRef,
   };

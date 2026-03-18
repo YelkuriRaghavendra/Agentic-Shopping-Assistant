@@ -1,30 +1,118 @@
+// Types aligned with backend Pydantic DTOs
+
 export type MessageRole = "user" | "bot";
+export type Channel = "web" | "mobile" | "whatsapp" | "sdk";
+export type GuardrailStatus = "passed" | "blocked" | "warned";
+export type ChipType = "quick_reply" | "refine" | "action" | "navigate";
 
-export interface ProductSuggestion {
-  id: string;
-  name: string;
-  price: string;
-  image: string;
-  rating: number;
-  badge?: string;
-}
+// ── Inbound (sent to API) ─────────────────────────────────────────────────
 
-export interface ChatMessage {
-  id: string;
-  role: MessageRole;
-  content: string;
-  timestamp: Date;
-  products?: ProductSuggestion[];
-}
-
-export interface SendMessagePayload {
+export interface ChatRequest {
   message: string;
-  conversationId: string;
+  customer_id?: string;
+  session_id?: string;
+  channel?: Channel;
+  filters?: Record<string, unknown>;
+}
+
+export interface CustomerCreateRequest {
+  external_id?: string;
+  email?: string;
+  name?: string;
+  phone?: string;
+  profile?: Record<string, unknown>;
+}
+
+export interface SessionCreateRequest {
+  customer_id?: string;
+  channel?: Channel;
+}
+
+export interface FeedbackRequest {
+  rating: -1 | 1;
+  comment?: string;
+  feedback_type?: "helpful" | "wrong_product" | "bad_link" | "hallucination" | "other";
+}
+
+// ── Outbound (received from API) ──────────────────────────────────────────
+
+export interface ProductCardDTO {
+  citation_id: string;
+  title: string;
+  url: string;
+  price: number | null;
+  currency: string;
+  image_url: string | null;
+  sku: string | null;
+  in_stock: boolean;
+  rating: number | null;
+  similarity: number | null;
+}
+
+export interface SuggestionChip {
+  label: string;
+  message: string;
+  icon?: string;
+  chip_type: ChipType;
 }
 
 export interface ChatResponse {
+  message_id: string;
+  session_id: string;
+  answer: string;
+  answer_html: string;
+  cited_products: ProductCardDTO[];
+  suggestions: SuggestionChip[];
+  intent: string;
+  guardrail_status: GuardrailStatus;
+  blocked: boolean;
+  latency_ms: number;
+  tokens_used: number;
+}
+
+export interface CustomerResponse {
   id: string;
+  external_id: string | null;
+  email: string | null;
+  name: string | null;
+  status: string;
+  profile: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface SessionResponse {
+  id: string;
+  customer_id: string | null;
+  channel: string;
+  status: "active" | "ended";
+  message_count: number;
+  total_tokens: number;
+  started_at: string;
+  ended_at: string | null;
+}
+
+export interface MessageResponse {
+  id: string;
+  role: string;
   content: string;
-  products?: ProductSuggestion[];
+  cited_products: Record<string, unknown>[];
+  intent: string | null;
+  created_at: string;
+}
+
+export interface MessageHistoryResponse {
+  messages: MessageResponse[];
+  next_cursor: string | null;
+  has_more: boolean;
+}
+
+// ── UI-only types ─────────────────────────────────────────────────────────
+
+export interface ChatMessageUI {
+  id: string;
+  role: MessageRole;
+  content: string;
+  answerHtml?: string;
   timestamp: Date;
+  suggestions?: SuggestionChip[];
 }
