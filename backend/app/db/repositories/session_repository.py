@@ -205,3 +205,18 @@ class SessionRepository(BaseRepository[Session]):
 
         result = await self._db.execute(query)
         return list(reversed(result.scalars().all()))
+
+    async def get_sessions_for_customer(
+        self,
+        customer_id: uuid.UUID,
+        limit: int = 50,
+    ) -> list[Session]:
+        """Return all sessions for a customer, newest first."""
+        result = await self._db.execute(
+            select(Session)
+            .where(Session.customer_id == customer_id)
+            .order_by(Session.started_at.desc())
+            .limit(limit)
+        )
+        return list(result.scalars().all())
+
