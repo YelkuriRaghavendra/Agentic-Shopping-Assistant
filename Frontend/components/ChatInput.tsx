@@ -37,7 +37,15 @@ export function ChatInput({ onSend, disabled = false, sessionEnded = false }: Ch
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={handleKeyDown}
           disabled={disabled}
-          placeholder={disabled && sessionEnded ? "This session has ended" : disabled ? "Assistant is typing..." : "Ask me anything about products..."}
+          placeholder={
+            disabled && sessionEnded
+              ? "This session has ended"
+              : disabled
+              ? "Assistant is typing..."
+              : value.startsWith("/")
+              ? "Commands: /start · /end"
+              : "Ask me anything about products..."
+          }
           aria-label="Chat message input"
           className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white placeholder:text-white/30 outline-none transition-all focus:border-violet-500/60 focus:ring-1 focus:ring-violet-500/40 disabled:cursor-not-allowed disabled:opacity-50"
         />

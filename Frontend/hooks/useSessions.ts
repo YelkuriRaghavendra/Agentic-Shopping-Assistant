@@ -10,6 +10,7 @@ export interface UseSessionsReturn {
   activeSessionId: string | null;
   isLoading: boolean;
   selectSession: (id: string) => void;
+  createSession: (customerId: string | null) => Promise<void>;
 }
 
 export function useSessions(customerId: string | null): UseSessionsReturn {
@@ -45,5 +46,14 @@ export function useSessions(customerId: string | null): UseSessionsReturn {
     setActiveSessionId(id);
   }, []);
 
-  return { sessions, activeSessionId, isLoading, selectSession };
+  const createSession = useCallback(async (cid: string | null) => {
+    const newSession = await httpClient.post<SessionResponse>(
+      endpoints.createSession,
+      { customer_id: cid, channel: "web" }
+    );
+    setSessions((prev) => [newSession, ...prev]);
+    setActiveSessionId(newSession.id);
+  }, []);
+
+  return { sessions, activeSessionId, isLoading, selectSession, createSession };
 }

@@ -16,6 +16,17 @@ export interface ChatWindowProps {
   inputDisabled: boolean;
   sessionEnded: boolean;
   bottomRef: React.RefObject<HTMLDivElement>;
+  isHistoryLoading?: boolean;
+}
+
+function HistorySkeleton() {
+  return (
+    <div className="flex flex-col gap-3 px-4 py-4" aria-label="Loading history">
+      <div className="animate-pulse bg-gray-700 rounded-xl h-12 w-3/4 self-end" />
+      <div className="animate-pulse bg-gray-700 rounded-xl h-12 w-1/2 self-start" />
+      <div className="animate-pulse bg-gray-700 rounded-xl h-12 w-2/3 self-end" />
+    </div>
+  );
 }
 
 export function ChatWindow({
@@ -26,6 +37,7 @@ export function ChatWindow({
   inputDisabled,
   sessionEnded,
   bottomRef,
+  isHistoryLoading = false,
 }: ChatWindowProps) {
   return (
     <div className="flex h-full w-full flex-col overflow-hidden rounded-2xl border border-white/10 bg-[hsl(var(--background))] shadow-2xl shadow-black/40">
@@ -48,13 +60,17 @@ export function ChatWindow({
 
       {/* Messages area */}
       <div className="flex-1 overflow-y-auto py-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/10">
-        <AnimatePresence initial={false}>
-          {messages.map((msg) => (
-            <MessageBubble key={msg.id} message={msg} />
-          ))}
+        {isHistoryLoading ? (
+          <HistorySkeleton />
+        ) : (
+          <AnimatePresence initial={false}>
+            {messages.map((msg) => (
+              <MessageBubble key={msg.id} message={msg} />
+            ))}
 
-          {isTyping && <TypingIndicator key="typing" />}
-        </AnimatePresence>
+            {isTyping && <TypingIndicator key="typing" />}
+          </AnimatePresence>
+        )}
 
         {/* Scroll anchor */}
         <div ref={bottomRef} />

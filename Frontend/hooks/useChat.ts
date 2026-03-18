@@ -15,6 +15,7 @@ interface UseChatReturn {
   sendMessage: (text: string) => void;
   isLoading: boolean;
   isTyping: boolean;
+  isHistoryLoading: boolean;
   sessionEnded: boolean;
   activeSessionId: string | null;
   error: string | null;
@@ -32,6 +33,7 @@ export function useChat(
   const [messages, setMessages] = useState<ChatMessageUI[]>([]);
   const [isTyping, setIsTyping] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(sessionId);
   const [sessionEnded, setSessionEnded] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -50,23 +52,36 @@ export function useChat(
     let cancelled = false;
 
     async function loadHistory() {
+      setIsHistoryLoading(true);
       try {
         const data = await httpClient.get<MessageHistoryResponse>(
           endpoints.sessionMessages(sessionId!)
         );
         if (cancelled) return;
 
-        const loaded: ChatMessageUI[] = data.messages.map((msg) => ({
-          id: msg.id,
-          role: msg.role === "user" ? "user" : "bot",
-          content: msg.content,
-          timestamp: new Date(msg.created_at),
-        }));
+        const loaded: ChatMessageUI[] = data.messages.map((msg) => {
+          // Extract answer_html from cited_products metadata if present
+          const citedMeta = msg.cited_products?.[0] as Record<string, unknown> | undefined;
+          const answerHtml =
+            typeof citedMeta?.answer_html === "string" && citedMeta.answer_html
+              ? citedMeta.answer_html
+              : undefined;
+
+          return {
+            id: msg.id,
+            role: (msg.role === "user" ? "user" : "bot") as "user" | "bot",
+            content: msg.content,
+            ...(answerHtml ? { answerHtml } : {}),
+            timestamp: new Date(msg.created_at),
+          };
+        });
         setMessages(loaded);
         setActiveSessionId(sessionId);
         scrollToBottom();
       } catch {
         // preserve existing messages on history load error
+      } finally {
+        if (!cancelled) setIsHistoryLoading(false);
       }
     }
 
@@ -79,7 +94,73 @@ export function useChat(
   const sendMessage = useCallback(
     async (text: string) => {
       const trimmed = text.trim();
-      if (!trimmed || sessionEnded || isLoading) return;
+      if (!trimmed || isLoading) return;
+
+      // Slash command: /start — allowed even when session is ended
+      if (trimmed.toLowerCase() === "/start") {
+        setIsLoading(true);
+        setError(null);
+        try {
+          const newSession = await httpClient.post<{ id: string }>(
+            endpoints.createSession,
+            { customer_id: customerId, channel: "web" }
+          );
+          setActiveSessionId(newSession.id);
+          setMessages([]);
+          setSessionEnded(false);
+          const infoMsg: ChatMessageUI = {
+            id: generateId(),
+            role: "bot",
+            content: "New session started.",
+            timestamp: new Date(),
+          };
+          setMessages([infoMsg]);
+          scrollToBottom();
+        } catch (err) {
+          const errMsg: ChatMessageUI = {
+            id: generateId(),
+            role: "bot",
+            content: `Failed to start session: ${err instanceof Error ? err.message : "Unknown error"}`,
+            timestamp: new Date(),
+          };
+          setMessages((prev) => [...prev, errMsg]);
+        } finally {
+          setIsLoading(false);
+        }
+        return;
+      }
+
+      // Slash command: /end
+      if (trimmed.toLowerCase() === "/end") {
+        if (!activeSessionId || sessionEnded || isLoading) return;
+        setIsLoading(true);
+        setError(null);
+        try {
+          await httpClient.post(endpoints.endSession(activeSessionId), {});
+          setSessionEnded(true);
+          const infoMsg: ChatMessageUI = {
+            id: generateId(),
+            role: "bot",
+            content: "Session ended.",
+            timestamp: new Date(),
+          };
+          setMessages((prev) => [...prev, infoMsg]);
+          scrollToBottom();
+        } catch (err) {
+          const errMsg: ChatMessageUI = {
+            id: generateId(),
+            role: "bot",
+            content: `Failed to end session: ${err instanceof Error ? err.message : "Unknown error"}`,
+            timestamp: new Date(),
+          };
+          setMessages((prev) => [...prev, errMsg]);
+        } finally {
+          setIsLoading(false);
+        }
+        return;
+      }
+
+      if (sessionEnded) return;
 
       const userMessage: ChatMessageUI = {
         id: generateId(),
@@ -139,6 +220,7 @@ export function useChat(
     sendMessage,
     isLoading,
     isTyping,
+    isHistoryLoading,
     sessionEnded,
     activeSessionId,
     error,

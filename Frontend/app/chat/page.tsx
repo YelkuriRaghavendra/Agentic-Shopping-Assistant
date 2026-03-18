@@ -36,6 +36,7 @@ export default function ChatPage() {
             activeSessionId={sessions.activeSessionId}
             isLoading={sessions.isLoading}
             onSelectSession={sessions.selectSession}
+            onNewSession={() => sessions.createSession(customer.customerId)}
           />
         </div>
       </aside>
@@ -51,6 +52,7 @@ export default function ChatPage() {
             inputDisabled={customer.isLoading}
             sessionEnded={chat.sessionEnded}
             bottomRef={chat.bottomRef}
+            isHistoryLoading={chat.isHistoryLoading}
           />
         </div>
       </div>

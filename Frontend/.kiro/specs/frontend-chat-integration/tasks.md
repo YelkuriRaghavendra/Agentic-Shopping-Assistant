@@ -227,6 +227,54 @@ Replace the mock-only Next.js chat frontend with a fully integrated implementati
   - Ensure all non-optional tests pass and the app compiles with `tsc --noEmit`
   - Ask the user if questions arise before marking complete
 
+- [x] 16. Sidebar — "New Session" button and colour polish
+  - [x] 16.1 Add "New Session" button at the top of `SessionSidebar`
+    - Add `onNewSession: () => void` to `SessionSidebarProps`
+    - Render a full-width button at the very top of the sidebar (above the session list) using the shadcn `Button` component with `variant="outline"` and a `Plus` icon from `lucide-react`
+    - Button label: "New Session"
+    - Clicking it calls `onNewSession()`; the button must be visible even when `isLoading` is true
+    - Remove any existing "New Session" UI from `ChatWindow` or `page.tsx` if present
+    - _Requirement: sidebar is the single entry point for starting a new session_
+
+  - [x] 16.2 Fix sidebar colour scheme
+    - Replace all raw HSL CSS-variable references (`hsl(var(--card))`, `hsl(var(--muted))`, etc.) with concrete Tailwind dark-mode colours that match the rest of the app's dark violet/indigo palette
+    - Sidebar background: `bg-gray-900`
+    - Session entry default: `bg-gray-800 hover:bg-gray-700 text-gray-100`
+    - Active session: `bg-violet-600 text-white`
+    - Status badge active: `bg-emerald-500/20 text-emerald-400`
+    - Status badge ended/other: `bg-gray-600/40 text-gray-400`
+    - Skeleton pulse: `bg-gray-700`
+    - Sidebar header border and text: `border-gray-700`, `text-gray-400`
+    - _Requirement: sidebar colours must be consistent with the dark violet/indigo app theme_
+
+  - [x] 16.3 Wire `onNewSession` in `useSessions` and `page.tsx`
+    - Add `createSession(customerId): Promise<void>` to `useSessions` — calls `POST /api/v1/chat/sessions` with `{ customer_id, channel: "web" }`, prepends the returned `SessionResponse` to `sessions`, and sets it as `activeSessionId`
+    - Expose `createSession` from `UseSessionsReturn`
+    - In `page.tsx` pass `onNewSession={() => sessions.createSession(customer.customerId)}` to `<SessionSidebar>`
+
+- [x] 17. Slash-command support: `/start` and `/end`
+  - [x] 17.1 Detect `/start` and `/end` commands in `useChat.sendMessage`
+    - Before the normal POST-to-chat flow, check if `trimmed === "/start"` or `trimmed === "/end"` (case-insensitive)
+    - `/start`: call `POST /api/v1/chat/sessions` with `{ customer_id, channel: "web" }`; on success set `activeSessionId` to the new session's `id`, clear `messages`, set `sessionEnded = false`; append a system info bubble `"New session started."`; do NOT post to `/chat`
+    - `/end`: call `POST /api/v1/chat/sessions/{activeSessionId}/end`; on success set `sessionEnded = true`; append a system info bubble `"Session ended."`; do NOT post to `/chat`
+    - On error for either command append a bot error bubble with the failure reason
+    - _Requirement: slash commands must work even when `sessionEnded` is true for `/start`_
+
+  - [x] 17.2 Update `ChatInput` placeholder and hint for slash commands
+    - When the input value starts with `/` show placeholder hint text `"Commands: /start · /end"` instead of the default placeholder
+    - No other changes to `ChatInput` styling or behaviour
+
+- [x] 18. Message history display
+  - [x] 18.1 Ensure `useChat` loads history on `sessionId` change (verify & harden)
+    - Confirm the existing `useEffect` in `useChat` that calls `GET /api/v1/chat/sessions/{id}/messages` fires whenever `sessionId` changes (already implemented in task 5.1 — this task is a hardening pass)
+    - Map `role === "assistant"` → `"bot"` and preserve `answer_html` from `cited_products` if present in the history response
+    - Show a loading skeleton (3 pulse rows) in `ChatWindow` while history is being fetched; expose `isHistoryLoading` from `useChat` and pass it as a prop to `ChatWindow`
+    - _Requirement: switching sessions must immediately replace the message list with the selected session's history_
+
+  - [x] 18.2 Build `HistorySkeleton` sub-component inside `ChatWindow`
+    - Render 3 animated `div` placeholders (`animate-pulse bg-gray-700 rounded-xl`) of alternating widths to mimic user/bot bubbles while history loads
+    - Shown only when `isHistoryLoading` is true; hidden once messages are available
+
 ## Notes
 
 - Tasks marked with `*` are optional and can be skipped for a faster MVP
@@ -235,3 +283,5 @@ Replace the mock-only Next.js chat frontend with a fully integrated implementati
 - DOMPurify runs in the browser; for SSR/test environments use `isomorphic-dompurify` or mock the module in Vitest setup
 - `useChat` receives `sessionId` from `useSessions.activeSessionId`; the two hooks are coordinated in `page.tsx`
 - The `httpMethods.ts` file requires no changes — it already delegates to `httpClient`
+- All new components must use shadcn `Button` / `Input` primitives and `lucide-react` icons
+- Slash commands (`/start`, `/end`) are intercepted before the normal chat POST — they never reach the LLM
