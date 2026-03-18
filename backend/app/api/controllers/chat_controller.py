@@ -210,6 +210,20 @@ class ChatController:
         await db.commit()
         return CustomerResponse.model_validate(customer)
 
+    async def get_customer_sessions(
+        self,
+        customer_id: uuid.UUID,
+        db: AsyncSession = Depends(get_db),
+    ) -> list[SessionResponse]:
+        """Return all sessions for a customer, newest first."""
+        customer_repo = CustomerRepository(db)
+        customer = await customer_repo.get_by_id(customer_id)
+        if not customer:
+            raise HTTPException(status_code=404, detail="Customer not found.")
+        repo = SessionRepository(db)
+        sessions = await repo.get_sessions_for_customer(customer_id)
+        return [SessionResponse.model_validate(s) for s in sessions]
+
     async def get_customer(
         self,
         customer_id: uuid.UUID,
