@@ -74,7 +74,7 @@ class CitationService:
             data = citation_map[cid]
             cited_products.append(ProductCardDTO(
                 productId=data["citation_id"],
-                productName=data["title"],
+                productName=data["product_id"],
                 price=data.get("price"),
                 rating=data.get("rating"),
                 productImageUrl=data.get("image_url"),
@@ -95,7 +95,7 @@ class CitationService:
                 return ""
             data  = citation_map[cid]
             url   = html_module.escape(data.get("url", "#"))
-            title = html_module.escape(data.get("title", "Product"))
+            title = html_module.escape(data.get("product_id", "Product"))
             sku   = html_module.escape(str(data.get("sku", "")))
             return (
                 f'<a href="{url}" '
