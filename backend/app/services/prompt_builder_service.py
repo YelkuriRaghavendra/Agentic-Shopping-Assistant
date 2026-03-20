@@ -72,7 +72,7 @@ class PromptBuilderService:
             if chunk.doc_type == "product":
                 citation_map[cid] = {
                     "citation_id": cid,
-                    "title":       chunk.title,
+                    "product_id":  chunk.product_id,
                     "url":         meta.get("url", ""),
                     "price":       meta.get("price"),
                     "currency":    meta.get("currency", "USD"),
@@ -86,13 +86,13 @@ class PromptBuilderService:
                 rating_str = f" | ⭐ {meta['rating']}" if meta.get("rating") else ""
                 stock_str  = "In stock" if meta.get("in_stock", True) else "Out of stock"
                 context_blocks.append(
-                    f"[{cid}] {chunk.title}{price_str}{rating_str} | {stock_str}\n"
+                    f"[{cid}] {chunk.product_id}{price_str}{rating_str} | {stock_str}\n"
                     f"{chunk.content}"
                 )
             else:
                 # Policy / FAQ — no citation, just reference
                 context_blocks.append(
-                    f"[Reference] {chunk.title}\n{chunk.content}"
+                    f"[Reference] {chunk.product_id}\n{chunk.content}"
                 )
 
         # ── Assemble system prompt sections ──────────────────────────────
@@ -129,9 +129,9 @@ class PromptBuilderService:
         # Layer 2: products shown earlier this session
         if shown_products:
             lines = [
-                f"  • {p['title']}"
+                f"  • {p['productName']}"
                 + (f" — ${p['price']}" if p.get("price") else "")
-                + (f" (SKU: {p['sku']})" if p.get("sku") else "")
+                + (f" (ID: {p['productId']})" if p.get("productId") else "")
                 for p in shown_products[-8:]
             ]
             sections.append(

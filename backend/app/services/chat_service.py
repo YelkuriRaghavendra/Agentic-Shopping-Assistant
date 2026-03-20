@@ -221,7 +221,7 @@ class ChatService:
         # ── 13. Output guardrails ──────────────────────────────────────────
         out_guard = self._guardrails.check_output(
             llm_result.content,
-            [c.title for c in tool_result.retrieved_chunks],
+            [c.product_id for c in tool_result.retrieved_chunks],
         )
         final_text = llm_result.content
         guard_status = "passed"

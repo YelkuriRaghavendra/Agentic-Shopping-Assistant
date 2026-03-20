@@ -1,0 +1,16 @@
+{
+  "_comment": "PageIndex configuration for policy/FAQ document retrieval.",
+
+  "enabled": true,
+  "index_model": "gpt-4o-mini",
+  "query_model": "gpt-4o-mini",
+  "max_tokens_per_index": 8000,
+  "cache_index": true,
+  "cache_ttl_seconds": 3600,
+
+  "routing": {
+    "use_for_doc_types": ["policy", "faq", "article"],
+    "fallback_to_pgvector_on_failure": true,
+    "min_document_chars_to_use_pageindex": 2000
+  }
+}

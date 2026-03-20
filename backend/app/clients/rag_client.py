@@ -16,7 +16,7 @@ logger = get_logger(__name__)
 
 @dataclass
 class RetrievedChunk:
-    title:      str
+    product_id: str
     content:    str
     doc_type:   str
     metadata:   dict
@@ -57,7 +57,7 @@ class RAGClient(BaseHTTPClient):
             )
             return [
                 RetrievedChunk(
-                    title=chunk.get("title", ""),
+                    product_id=chunk.get("product_id", ""),
                     content=chunk.get("content", ""),
                     doc_type=chunk.get("doc_type", "product"),
                     metadata=chunk.get("metadata") or {},

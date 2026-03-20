@@ -1,0 +1,19 @@
+{
+  "_comment": "Ingestion pipeline configuration. Edit without touching Python code.",
+
+  "chunking": {
+    "default_chunk_size_tokens": 512,
+    "default_overlap_tokens": 51,
+    "min_chunk_size_tokens": 50
+  },
+
+  "embedding": {
+    "batch_size": 100,
+    "max_retries": 3
+  },
+
+  "deduplication": {
+    "enabled": true,
+    "hash_algorithm": "sha256"
+  }
+}
