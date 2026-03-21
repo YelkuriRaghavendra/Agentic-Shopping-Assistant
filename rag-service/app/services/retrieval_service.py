@@ -20,7 +20,10 @@ from app.clients.cross_encoder_client import CrossEncoderClient
 from app.clients.embedding_client import EmbeddingClient
 from app.config.loader import RETRIEVAL_CONFIG
 from app.core.logging import get_logger
+from app.db.models.enums.document_enums import DocumentType
 from app.db.repositories.chunk_repository import EmbeddingRepository
+
+_VALID_DOC_TYPES = {dt.value for dt in DocumentType}
 
 logger = get_logger(__name__)
 
@@ -58,10 +61,12 @@ class RetrievalService:
         query:  str,
         top_k:  int  = 5,
         rerank: bool = True,
+        filters: dict[str, Any] | None = None,
+        doc_type: str | None = None,
     ) -> list[RetrievedResult]:
         start_time = time.monotonic()
 
-        candidates = await self._vector_search(query, top_k, rerank)
+        candidates = await self._vector_search(query, top_k, rerank, filters=filters, doc_type=doc_type)
 
         latency_ms = int((time.monotonic() - start_time) * 1000)
         logger.info("retrieval.complete", results=len(candidates), latency_ms=latency_ms)
@@ -72,6 +77,8 @@ class RetrievalService:
         query:  str,
         top_k:  int,
         rerank: bool,
+        filters: dict[str, Any] | None = None,
+        doc_type: str | None = None,
     ) -> list[RetrievedResult]:
         vs_config    = RETRIEVAL_CONFIG["vector_search"]
         rerank_cfg   = RETRIEVAL_CONFIG["reranking"]
@@ -86,7 +93,46 @@ class RetrievalService:
         # tune HNSW recall for this query
         await self._db.execute(text(f"SET LOCAL hnsw.ef_search = {ef_search}"))
 
-        sql = text("""
+        # Build dynamic WHERE clauses based on filters
+        where_clauses = [
+            "m.is_active = TRUE",
+            "d.status = 'READY'",
+            "(1 - (e.embedding <=> CAST(:query_vector AS vector))) >= :min_score",
+        ]
+        params: dict[str, Any] = {
+            "query_vector": str(query_vector),
+            "min_score":    min_score,
+            "fetch_count":  fetch_count,
+        }
+
+        # doc_type filter (defaults to PRODUCT) — validate against known enum values
+        resolved_doc_type = (doc_type or "PRODUCT").upper()
+        if resolved_doc_type not in _VALID_DOC_TYPES:
+            resolved_doc_type = "PRODUCT"
+        where_clauses.append("d.document_type = :doc_type")
+        params["doc_type"] = resolved_doc_type
+
+        # metadata filters
+        if filters:
+            if filters.get("brand"):
+                where_clauses.append("d.metadata->>'brand' ILIKE :brand")
+                params["brand"] = filters["brand"]
+            if filters.get("category"):
+                where_clauses.append("d.metadata->>'category' ILIKE :category")
+                params["category"] = filters["category"]
+            if filters.get("max_price") is not None and filters["max_price"] > 0:
+                where_clauses.append("CAST(d.metadata->>'price' AS FLOAT) <= :max_price")
+                params["max_price"] = filters["max_price"]
+            if filters.get("min_price") is not None and filters["min_price"] > 0:
+                where_clauses.append("CAST(d.metadata->>'price' AS FLOAT) >= :min_price")
+                params["min_price"] = filters["min_price"]
+            if filters.get("in_stock") is not None:
+                where_clauses.append("(d.metadata->>'in_stock')::boolean = :in_stock")
+                params["in_stock"] = filters["in_stock"]
+
+        where_sql = " AND ".join(where_clauses)
+
+        sql = text(f"""
             SELECT
                 c.chunk_id,
                 c.document_id,
@@ -101,19 +147,12 @@ class RetrievalService:
             JOIN chunks     c ON c.chunk_id     = e.chunk_id
             JOIN documents  d ON d.document_id  = c.document_id
             JOIN llm_models m ON m.llm_model_id = e.llm_model_id
-            WHERE m.is_active        = TRUE
-              AND d.status           = 'READY'
-              AND d.document_type    = 'PRODUCT'
-              AND (1 - (e.embedding <=> CAST(:query_vector AS vector))) >= :min_score
+            WHERE {where_sql}
             ORDER BY e.embedding <=> CAST(:query_vector AS vector)
             LIMIT :fetch_count
         """)
 
-        rows = (await self._db.execute(sql, {
-            "query_vector": str(query_vector),
-            "min_score":    min_score,
-            "fetch_count":  fetch_count,
-        })).mappings().all()
+        rows = (await self._db.execute(sql, params)).mappings().all()
 
         candidates = [
             RetrievedResult(

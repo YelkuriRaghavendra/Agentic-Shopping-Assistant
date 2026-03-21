@@ -51,7 +51,6 @@ class RetrieveController:
             )
             for retrieved_result in results
         ]
-
         return RetrievalResponse(
             query=request.query,
             results=chunks,

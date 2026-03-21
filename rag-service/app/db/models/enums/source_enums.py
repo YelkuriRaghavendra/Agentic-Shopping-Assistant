@@ -12,3 +12,4 @@ class SourceType(str, enum.Enum):
     FILE_UPLOAD = "FILE_UPLOAD"
     CSV         = "CSV"
     PDF         = "PDF"
+    API_PUSH    = "API_PUSH"

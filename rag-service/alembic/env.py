@@ -2,7 +2,11 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 from app.core.config import get_settings
 from logging.config import fileConfig
 from app.db.session import Base
-from app.models.models import *
+from app.db.models.document import Document
+from app.db.models.chunk import Chunk
+from app.db.models.embedding import Embedding, LLMModel
+from app.db.models.jobs import Jobs
+from app.db.models.sources import Source
 from sqlalchemy import pool
 from alembic import context
 import asyncio

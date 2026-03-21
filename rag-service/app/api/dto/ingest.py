@@ -9,10 +9,11 @@ class ProductIngestRequest(BaseModel):
     source_id: uuid.UUID
     product_id: str = Field(..., min_length=1)
     product_name: str = Field(..., min_length=1)
-    product_description: str = Field(..., min_length=10)
+    product_description: str
     product_url: str = Field(..., min_length=1)
     price: float = Field(..., ge=0)
     currency: str = Field(default="INR", max_length=3)
+    image_url:str
     brand: str | None = None
     category: str | None = None
     rating: float | None = Field(default=None, ge=0, le=5)
@@ -34,6 +35,7 @@ class ProductIngestRequest(BaseModel):
             f"Price: {self.currency} {self.price}",
             f"Tags: {', '.join(self.tags)}" if self.tags else "",
             f"Rating: {self.rating}/5 ({self.review_count} reviews)" if self.rating else "",
+            f"Image URL: {self.image_url}" if self.image_url else "",
             "Product Attributes:\n" + attributes_text if self.product_attributes else "",
             "Customer Reviews:\n" + "\n".join(f"- {review}" for review in top_reviews) if top_reviews else "",
         ]
@@ -49,6 +51,7 @@ class ProductIngestRequest(BaseModel):
             "brand": self.brand,
             "category": self.category,
             "rating": self.rating,
+            "image_url": self.image_url,
             "review_count": self.review_count,
             "customer_reviews": self.customer_reviews,
             "product_attributes": self.product_attributes,
@@ -62,6 +65,19 @@ class IngestResponse(BaseModel):
     job_id:      uuid.UUID | None
     status:      str
     message:     str
+
+
+class BulkProductIngestRequest(BaseModel):
+    products: list[ProductIngestRequest] = Field(
+        ..., min_length=1, max_length=500,
+        description="List of products to ingest (1-100).",
+    )
+
+
+class BulkIngestResponse(BaseModel):
+    total: int
+    status: str
+    message: str
 
 
 class JobsResponse(BaseModel):
