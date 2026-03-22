@@ -9,7 +9,9 @@ from datetime import datetime, timedelta, UTC
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.models import Session, SessionFeedback
+from app.db.models.session import Session, SessionFeedback
+from app.db.models.message import Message
+from app.db.models.enums.session_enums import SessionStatus, ChannelType
 from app.db.repositories.base_repository import BaseRepository
 from app.core.config import get_settings
 
@@ -19,7 +21,7 @@ settings = get_settings()
 class SessionRepository(BaseRepository[Session]):
 
     def __init__(self, db: AsyncSession):
-        super().__init__(Session, db)
+        super().__init__(Session, db, pk_column="session_id")
 
     async def find_active_for_customer(
         self,
@@ -33,9 +35,9 @@ class SessionRepository(BaseRepository[Session]):
             select(Session)
             .where(
                 Session.customer_id == customer_id,
-                Session.status == "active",
+                Session.status == SessionStatus.ACTIVE,
             )
-            .order_by(Session.updated_at.desc())
+            .order_by(Session.last_updated_at.desc().nullslast())
             .limit(1)
         )
         session = result.scalar_one_or_none()
@@ -44,9 +46,10 @@ class SessionRepository(BaseRepository[Session]):
 
         # Check if session has gone idle past TTL
         ttl = timedelta(minutes=settings.SESSION_TTL_MINUTES)
-        idle_since = datetime.now(UTC) - session.updated_at
+        last_update = session.last_updated_at or session.created_at
+        idle_since = datetime.now(UTC) - last_update
         if idle_since > ttl:
-            await self.expire(session.id)
+            await self.expire(session.session_id)
             return None
 
         return session
@@ -54,14 +57,11 @@ class SessionRepository(BaseRepository[Session]):
     async def get_or_create(
         self,
         customer_id: uuid.UUID | None,
-        channel: str = "web",
+        channel: str = "WEB",
     ) -> tuple[Session, bool]:
         """
         Find active session for customer or create a new one.
         Returns (session, was_created).
-
-        This is the core of auto-session:
-        the caller just passes customer_id and gets a ready session.
         """
         if customer_id:
             existing = await self.find_active_for_customer(customer_id)
@@ -71,7 +71,7 @@ class SessionRepository(BaseRepository[Session]):
         session = Session(
             customer_id=customer_id,
             channel=channel,
-            status="active",
+            status=SessionStatus.ACTIVE,
             context={},
             message_count=0,
             total_tokens=0,
@@ -82,13 +82,13 @@ class SessionRepository(BaseRepository[Session]):
     async def create(
         self,
         customer_id: uuid.UUID | None = None,
-        channel: str = "web",
+        channel: str = "WEB",
     ) -> Session:
         """Force-create a new session regardless of existing active sessions."""
         session = Session(
             customer_id=customer_id,
             channel=channel,
-            status="active",
+            status=SessionStatus.ACTIVE,
             context={},
         )
         return await self.save(session)
@@ -103,7 +103,6 @@ class SessionRepository(BaseRepository[Session]):
         if session:
             session.message_count += turn_delta
             session.total_tokens  += token_delta
-            session.updated_at     = datetime.now(UTC)
 
     async def update_context(
         self,
@@ -114,23 +113,22 @@ class SessionRepository(BaseRepository[Session]):
         Replace session context and mark JSONB as modified.
         Always call this instead of mutating session.context directly.
         """
-        session.context    = context
-        session.updated_at = datetime.now(UTC)
+        session.context = context
         self.mark_modified(session, "context")
 
     async def end(self, session_id: uuid.UUID) -> Session | None:
         session = await self.get_by_id(session_id)
         if session:
-            session.status   = "ended"
+            session.status   = SessionStatus.ENDED
             session.ended_at = datetime.now(UTC)
         return session
 
     async def expire(self, session_id: uuid.UUID) -> None:
         await self._db.execute(
             update(Session)
-            .where(Session.id == session_id)
+            .where(Session.session_id == session_id)
             .values(
-                status="expired",
+                status=SessionStatus.EXPIRED,
                 ended_at=datetime.now(UTC),
             )
         )
@@ -138,17 +136,16 @@ class SessionRepository(BaseRepository[Session]):
     async def expire_idle_sessions(self) -> int:
         """
         Expire all sessions idle longer than SESSION_TTL_MINUTES.
-        Called by a background job or on startup.
         Returns count of sessions expired.
         """
         cutoff = datetime.now(UTC) - timedelta(minutes=settings.SESSION_TTL_MINUTES)
         result = await self._db.execute(
             update(Session)
             .where(
-                Session.status == "active",
-                Session.updated_at < cutoff,
+                Session.status == SessionStatus.ACTIVE,
+                Session.last_updated_at < cutoff,
             )
-            .values(status="expired", ended_at=datetime.now(UTC))
+            .values(status=SessionStatus.EXPIRED, ended_at=datetime.now(UTC))
         )
         return result.rowcount
 
@@ -187,7 +184,6 @@ class SessionRepository(BaseRepository[Session]):
         before_id: uuid.UUID | None = None,
     ) -> list:
         """Cursor-based pagination for message history."""
-        from app.db.models.models import Message
         query = (
             select(Message)
             .where(Message.session_id == session_id)
@@ -195,9 +191,8 @@ class SessionRepository(BaseRepository[Session]):
             .limit(limit)
         )
         if before_id:
-            # Get the created_at of the cursor message
             cursor_result = await self._db.execute(
-                select(Message.created_at).where(Message.id == before_id)
+                select(Message.created_at).where(Message.message_id == before_id)
             )
             cursor_ts = cursor_result.scalar_one_or_none()
             if cursor_ts:
@@ -219,4 +214,3 @@ class SessionRepository(BaseRepository[Session]):
             .limit(limit)
         )
         return list(result.scalars().all())
-

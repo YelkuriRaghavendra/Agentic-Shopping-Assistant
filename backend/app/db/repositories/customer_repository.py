@@ -4,18 +4,18 @@ All customer-related DB operations live here.
 """
 
 import uuid
-from datetime import datetime, UTC
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.models import Customer
+from app.db.models.customer import Customer
+from app.db.models.enums.customer_enums import CustomerStatus
 from app.db.repositories.base_repository import BaseRepository
 
 
 class CustomerRepository(BaseRepository[Customer]):
 
     def __init__(self, db: AsyncSession):
-        super().__init__(Customer, db)
+        super().__init__(Customer, db, pk_column="customer_id")
 
     async def find_by_external_id(self, external_id: str) -> Customer | None:
         result = await self._db.execute(
@@ -43,7 +43,7 @@ class CustomerRepository(BaseRepository[Customer]):
             name=name,
             phone=phone,
             profile=profile or {},
-            status="active",
+            status=CustomerStatus.ACTIVE,
         )
         return await self.save(customer)
 
@@ -61,12 +61,11 @@ class CustomerRepository(BaseRepository[Customer]):
             return
         merged = {**customer.profile, **profile}
         customer.profile = merged
-        customer.updated_at = datetime.now(UTC)
         self.mark_modified(customer, "profile")
 
-    async def set_status(self, customer_id: uuid.UUID, status: str) -> None:
+    async def set_status(self, customer_id: uuid.UUID, status: CustomerStatus) -> None:
         await self._db.execute(
             update(Customer)
-            .where(Customer.id == customer_id)
-            .values(status=status, updated_at=datetime.now(UTC))
+            .where(Customer.customer_id == customer_id)
+            .values(status=status)
         )

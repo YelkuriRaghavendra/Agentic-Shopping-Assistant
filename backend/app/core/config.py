@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     # ── RAG Service ───────────────────────────────────
     RAG_SERVICE_URL: str = "http://rag-service:8001"
     RAG_API_KEY: str = "dev-secret-change-in-prod"
-    RAG_TIMEOUT_SECONDS: int = 10
+    RAG_TIMEOUT_SECONDS: int = 15
     RAG_TOP_K: int = 5
 
     # ── Session ───────────────────────────────────────

@@ -4,7 +4,9 @@ from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 from alembic import context
 from app.db.session import Base
-from app.db.models.models import *  # noqa — registers all models
+from app.db.models.customer import Customer
+from app.db.models.session import Session, SessionFeedback
+from app.db.models.message import Message
 from app.core.config import get_settings
 
 settings = get_settings()

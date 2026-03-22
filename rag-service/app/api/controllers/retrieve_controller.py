@@ -35,7 +35,7 @@ class RetrieveController:
             top_k=request.top_k,
             filters=filters,
             rerank=request.rerank,
-            doc_type=request.filters.doc_type if request.filters else None,
+            doc_type=request.filters.document_type if request.filters else None,
         )
 
         chunks = [
@@ -45,7 +45,7 @@ class RetrieveController:
                 chunk_index=retrieved_result.chunk_index,
                 content=retrieved_result.content,
                 similarity=retrieved_result.similarity,
-                doc_type=retrieved_result.doc_type,
+                document_type=retrieved_result.doc_type,
                 product_id=retrieved_result.product_id,
                 metadata=retrieved_result.metadata,
             )

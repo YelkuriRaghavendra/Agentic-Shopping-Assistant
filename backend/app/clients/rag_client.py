@@ -18,7 +18,7 @@ logger = get_logger(__name__)
 class RetrievedChunk:
     product_id: str
     content:    str
-    doc_type:   str
+    document_type:   str
     metadata:   dict
     similarity: float
 
@@ -59,14 +59,13 @@ class RAGClient(BaseHTTPClient):
                 RetrievedChunk(
                     product_id=chunk.get("product_id", ""),
                     content=chunk.get("content", ""),
-                    doc_type=chunk.get("doc_type", "product"),
+                    document_type=chunk.get("document_type", "product"),
                     metadata=chunk.get("metadata") or {},
                     similarity=chunk.get("similarity", 0.0),
                 )
                 for chunk in data.get("results", [])
             ]
         except Exception as e:
-            # RAG failure is non-fatal — log and return empty
             logger.warning(
                 "rag_client.retrieve_failed",
                 query=query[:50],

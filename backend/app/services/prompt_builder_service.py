@@ -38,7 +38,31 @@ RULES:
 
 CITATION FORMAT:
   "The Nike Air Max 270 [P1] is great for running at $150."
-  Do NOT write the URL — that is replaced automatically after your response."""
+  Do NOT write the URL — that is replaced automatically after your response.
+
+RESPONSE FORMAT:
+You MUST respond with valid JSON in this exact structure:
+{
+  "answer": "Your natural response text here with [P1] citations...",
+  "suggestions": [
+    {"label": "Short chip text", "message": "Full message sent when tapped"},
+    {"label": "Another option", "message": "Another follow-up message"}
+  ]
+}
+
+SUGGESTION RULES:
+- Always include 2-4 suggestions that are natural follow-ups to your response
+- Each suggestion should be a different direction the customer might want to go
+- "label" must be under 35 characters (what the customer sees on the chip)
+- "message" is what gets sent as the customer's next message when they tap
+- Make suggestions contextual — based on what was just discussed, not generic
+- Examples of good suggestions after showing running shoes:
+  {"label": "Compare these two", "message": "Can you compare the Nike Air Max and Adidas Ultraboost?"}
+  {"label": "Show in size 10", "message": "Do you have these in size 10?"}
+  {"label": "Under $100 options", "message": "Show me running shoes under $100"}
+  {"label": "Any waterproof?", "message": "Do you have any waterproof running shoes?"}
+- NEVER return generic suggestions like "Tell me more" or "Browse products"
+- ALWAYS return valid JSON — no text before or after the JSON object"""
 
 
 class PromptBuilderService:
@@ -69,18 +93,18 @@ class PromptBuilderService:
             cid = f"P{i + 1}"
             meta = chunk.metadata
 
-            if chunk.doc_type == "product":
+            if chunk.document_type.upper() == "PRODUCT":
                 citation_map[cid] = {
-                    "citation_id": cid,
-                    "product_id":  chunk.product_id,
-                    "url":         meta.get("url", ""),
-                    "price":       meta.get("price"),
-                    "currency":    meta.get("currency", "USD"),
-                    "image_url":   meta.get("image_url"),
-                    "sku":         meta.get("sku"),
-                    "in_stock":    meta.get("in_stock", True),
-                    "rating":      meta.get("rating"),
-                    "similarity":  chunk.similarity,
+                    "citation_id":  cid,
+                    "product_id":   chunk.product_id,
+                    "product_name": meta.get("product_name"),
+                    "url":          meta.get("product_url", meta.get("url", "")),
+                    "price":        meta.get("price"),
+                    "currency":     meta.get("currency"),
+                    "image_url":    meta.get("image_url"),
+                    "sku":          meta.get("sku"),
+                    "rating":       meta.get("rating"),
+                    "similarity":   chunk.similarity,
                 }
                 price_str  = f" | ${meta['price']}" if meta.get("price") else ""
                 rating_str = f" | ⭐ {meta['rating']}" if meta.get("rating") else ""

@@ -35,6 +35,13 @@ logger = get_logger(__name__)
 async def lifespan(app: FastAPI):
     logger.info("app.starting", version=settings.APP_VERSION)
     await init_db()
+    try:
+        from app.clients.cross_encoder_client import _load_model
+        from app.config.loader import RETRIEVAL_CONFIG
+        model_name = RETRIEVAL_CONFIG["reranking"]["model"]
+        _load_model(model_name)
+    except Exception as exc:
+        logger.warning("cross_encoder.preload_failed", error=str(exc))
     yield
     logger.info("app.shutdown")
 

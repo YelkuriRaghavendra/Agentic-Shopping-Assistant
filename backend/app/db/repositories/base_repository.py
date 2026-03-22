@@ -15,13 +15,17 @@ T = TypeVar("T")
 class BaseRepository(Generic[T]):
     """Generic base — concrete repos inherit and specialise."""
 
-    def __init__(self, model: type[T], db: AsyncSession):
+    _pk_column: str = "id"  # override in subclass if PK is named differently
+
+    def __init__(self, model: type[T], db: AsyncSession, pk_column: str = "id"):
         self._model = model
         self._db = db
+        self._pk_column = pk_column
 
     async def get_by_id(self, record_id) -> T | None:
+        pk = getattr(self._model, self._pk_column)
         result = await self._db.execute(
-            select(self._model).where(self._model.id == record_id)
+            select(self._model).where(pk == record_id)
         )
         return result.scalar_one_or_none()
 

@@ -34,12 +34,20 @@ logger = get_logger(__name__)
 
 
 @dataclass
+class SuggestionItem:
+    """A single suggestion from the LLM."""
+    label:   str
+    message: str
+
+
+@dataclass
 class LLMResult:
     """Returned by non-streaming LLM calls."""
     content:      str
     input_tokens: int
     output_tokens: int
     model:        str
+    suggestions:  list[SuggestionItem] | None = None
 
 
 @dataclass
@@ -117,6 +125,7 @@ class LLMClient:
         tools: list[dict] | None = None,
         tool_choice: str = "auto",
         stream: bool = False,
+        response_format: dict | None = None,
     ):
         """Raw API call — wraps all OpenAI/Azure specifics."""
         try:
@@ -130,6 +139,8 @@ class LLMClient:
             if tools:
                 kwargs["tools"] = tools
                 kwargs["tool_choice"] = tool_choice
+            if response_format:
+                kwargs["response_format"] = response_format
 
             return await _client.chat.completions.create(**kwargs)
         except openai.RateLimitError:
@@ -209,6 +220,7 @@ class LLMClient:
         """
         Second LLM call — writes a natural language response
         using the tool result as context.
+        Returns JSON with answer + suggestions.
         """
         messages = [
             {"role": "system", "content": system_prompt},
@@ -221,8 +233,8 @@ class LLMClient:
             {
                 "role": "user",
                 "content": (
-                    "Write a natural helpful response. "
-                    "Cite products with [P1], [P2] markers if applicable."
+                    "Respond with valid JSON containing 'answer' and 'suggestions'. "
+                    "Cite products with [P1], [P2] markers in the answer."
                 ),
             },
         ]
@@ -233,6 +245,7 @@ class LLMClient:
                 response = await self._call(
                     messages=messages,
                     model=_model(fallback),
+                    response_format={"type": "json_object"},
                 )
                 break
             except (LLMError, openai.RateLimitError):
@@ -243,12 +256,38 @@ class LLMClient:
             raise LLMError("No response from LLM.")
 
         choice = response.choices[0]
+        raw_content = choice.message.content or ""
+
+        # Parse JSON response
+        content, suggestions = self._parse_json_response(raw_content)
+
         return LLMResult(
-            content=choice.message.content or "",
+            content=content,
             input_tokens=response.usage.prompt_tokens,
             output_tokens=response.usage.completion_tokens,
             model=response.model,
+            suggestions=suggestions,
         )
+
+    @staticmethod
+    def _parse_json_response(raw: str) -> tuple[str, list[SuggestionItem] | None]:
+        """Parse LLM JSON response into answer text and suggestions."""
+        try:
+            data = json.loads(raw)
+            answer = data.get("answer", raw)
+            raw_suggestions = data.get("suggestions", [])
+            suggestions = [
+                SuggestionItem(
+                    label=s.get("label", "")[:40],
+                    message=s.get("message", s.get("label", "")),
+                )
+                for s in raw_suggestions
+                if isinstance(s, dict) and s.get("label")
+            ][:4]  # cap at 4
+            return answer, suggestions if suggestions else None
+        except (json.JSONDecodeError, AttributeError):
+            logger.warning("llm_client.json_parse_failed", raw=raw[:200])
+            return raw, None
 
     async def generate_stream(
         self,

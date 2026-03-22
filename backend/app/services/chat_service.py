@@ -32,7 +32,7 @@ import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dto.chat_dto import ChatRequest, ChatResponse, ProductCardDTO
-from app.clients.llm_client import LLMClient, ToolCall
+from app.clients.llm_client import LLMClient, ToolCall, SuggestionItem
 from app.clients.rag_client import RAGClient
 from app.core.config import get_settings
 from app.core.exceptions import (
@@ -42,7 +42,9 @@ from app.core.exceptions import (
     TokenBudgetExceededError,
     LLMError,
 )
-from app.db.models.models import Session
+from app.db.models.session import Session
+from app.db.models.enums.session_enums import SessionStatus
+from app.db.models.enums.message_enums import MessageRole, GuardrailStatus
 from app.db.repositories import (
     SessionRepository,
     CustomerRepository,
@@ -53,7 +55,6 @@ from app.services.guardrails_service import GuardrailsService
 from app.services.memory_service import MemoryService, SlotState, ConversationHistory
 from app.services.prompt_builder_service import PromptBuilderService
 from app.services.rate_limiter_service import RateLimiterService
-from app.services.suggestion_service import SuggestionService
 from app.services.tool_registry import ToolRegistry, TOOL_DEFINITIONS
 from app.services.skills.skill_registry import SkillRegistry
 from app.services.skills.base_skill import SkillContext
@@ -84,7 +85,6 @@ class ChatService:
         prompt:        PromptBuilderService,
         citations:     CitationService,
         tools:         ToolRegistry,
-        suggestions:   SuggestionService,
         skills:        SkillRegistry,
     ):
         self._db           = db
@@ -96,7 +96,6 @@ class ChatService:
         self._prompt       = prompt
         self._citations    = citations
         self._tools        = tools
-        self._suggestions  = suggestions
         self._skills       = skills
 
         self._session_repo  = SessionRepository(db)
@@ -181,7 +180,7 @@ class ChatService:
         tool_name = tool_call.tool_name
         tool_args = self._enrich_tool_args(tool_name, tool_call.tool_args, slots, request.filters)
 
-        logger.info("chat.tool_selected", session_id=str(session.id), tool=tool_name, intent=intent)
+        logger.info("chat.tool_selected", session_id=str(session.session_id), tool=tool_name, intent=intent)
 
         # ── 9. No-cost shortcut responses ─────────────────────────────────
         if tool_name == "clarify_question":
@@ -224,10 +223,10 @@ class ChatService:
             [c.product_id for c in tool_result.retrieved_chunks],
         )
         final_text = llm_result.content
-        guard_status = "passed"
+        guard_status = GuardrailStatus.PASSED
         if not out_guard.passed:
             final_text   = out_guard.safe_response or final_text
-            guard_status = "warned"
+            guard_status = GuardrailStatus.WARNED
 
         # ── 14. Citation processing ────────────────────────────────────────
         answer, answer_html, cited_products = self._citations.process(
@@ -236,15 +235,15 @@ class ChatService:
 
         # ── 15. Persist everything ────────────────────────────────────────
         await self._message_repo.create(
-            session_id=session.id,
-            role="user",
+            session_id=session.session_id,
+            role=MessageRole.USER,
             content=request.message,
             intent=intent,
-            guardrail_status="passed",
+            guardrail_status=GuardrailStatus.PASSED,
         )
         bot_msg = await self._message_repo.create(
-            session_id=session.id,
-            role="assistant",
+            session_id=session.session_id,
+            role=MessageRole.ASSISTANT,
             content=answer,
             intent=intent,
             guardrail_status=guard_status,
@@ -255,7 +254,7 @@ class ChatService:
             llm_model=llm_result.model,
         )
         await self._session_repo.increment_counters(
-            session_id=session.id,
+            session_id=session.session_id,
             turn_delta=2,
             token_delta=llm_result.input_tokens + llm_result.output_tokens,
         )
@@ -269,7 +268,7 @@ class ChatService:
 
         # ── 16. Background tasks ──────────────────────────────────────────
         self._schedule_background_tasks(
-            session_id=session.id,
+            session_id=session.session_id,
             customer_id=session.customer_id,
             slots=slots,
             cited_products=cited_products,
@@ -277,45 +276,28 @@ class ChatService:
             people=people,
         )
 
-        # ── HARDCODED TEST PRODUCT (remove before production) ─────────────
-        cited_products = cited_products + [
-            ProductCardDTO(
-                productId="Lst001",
-                productName="VOLTURI Non Scratch Wire Dish Cloth (Pack of 10), Steel Scrubber for Utensils Cleaning, Multipurpose Wet and Dry Cleaning, Stainless-Steel Dish Wash Scrubber for Washing Dishes, Sinks, Counters",
-                price=5000,
-                rating=3.5,
-                productImageUrl="https://m.media-amazon.com/images/I/81VVv+eRQCL._SX679_.jpg",
-            )
-        ]
-
-        # ── 17. Generate suggestions ─────────────────────────────────────
-        suggestion_response = self._suggestions.generate(
-            intent=intent,
-            slots=slots,
-            cited_products=cited_products,
-            blocked=False,
-            last_user_message=request.message,
-        )
+        # ── 17. Suggestions (LLM-generated, rule-based fallback) ────────
+        suggestions_list = self._build_suggestions(llm_result.suggestions)
 
         latency_ms = int((time.monotonic() - t_start) * 1000)
         logger.info(
             "chat.complete",
-            session_id=str(session.id),
+            session_id=str(session.session_id),
             tool=tool_name,
             latency_ms=latency_ms,
             citations=len(cited_products),
-            suggestions=len(suggestion_response.chips),
+            suggestions=len(suggestions_list),
             skills=skill_result.metadata.get("active_skills", []),
             tokens=llm_result.input_tokens + llm_result.output_tokens,
         )
 
         return ChatResponse(
-            message_id=bot_msg.id,
-            session_id=session.id,
+            message_id=bot_msg.message_id,
+            session_id=session.session_id,
             answer=answer,
             answer_html=answer_html,
             cited_products=cited_products,
-            suggestions=[c.model_dump() for c in suggestion_response.chips],
+            suggestions=suggestions_list,
             intent=intent,
             guardrail_status=guard_status,
             blocked=False,
@@ -326,6 +308,18 @@ class ChatService:
     # ─────────────────────────────────────────────────────────────────────────
     # Private helpers
     # ─────────────────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _build_suggestions(
+        llm_suggestions: list[SuggestionItem] | None,
+    ) -> list[dict]:
+        """Convert LLM-generated suggestions to dicts for the response."""
+        if not llm_suggestions:
+            return []
+        return [
+            {"label": s.label, "message": s.message, "chip_type": "quick_reply"}
+            for s in llm_suggestions
+        ]
 
     async def _resolve_session(self, request: ChatRequest) -> Session:
         """
@@ -347,27 +341,27 @@ class ChatService:
         if created:
             logger.info(
                 "chat.session_auto_created",
-                session_id=str(session.id),
+                session_id=str(session.session_id),
                 customer_id=str(request.customer_id) if request.customer_id else "guest",
             )
         return session
 
     async def _check_session_health(self, session: Session) -> None:
-        if session.status == "expired":
+        if session.status == SessionStatus.EXPIRED:
             raise SessionExpiredError()
-        if session.status != "active":
+        if session.status != SessionStatus.ACTIVE:
             raise SessionInactiveError(f"Session is {session.status}.")
         if session.total_tokens >= settings.SESSION_TOKEN_BUDGET:
             raise TokenBudgetExceededError()
 
     async def _load_history(self, session: Session) -> ConversationHistory:
         messages = await self._message_repo.get_recent_turns(
-            session_id=session.id,
+            session_id=session.session_id,
             limit=settings.CONVERSATION_WINDOW_TURNS * 2,
         )
         return ConversationHistory(
             recent_turns=[
-                {"role": m.role, "content": m.content}
+                {"role": m.role.lower() if isinstance(m.role, str) else m.role, "content": m.content}
                 for m in messages
             ],
             summary=self._memory.load_summary(session),
@@ -513,43 +507,61 @@ class ChatService:
         self, session, request, reason, safe_response, t_start
     ) -> ChatResponse:
         await self._message_repo.create(
-            session_id=session.id, role="user", content=request.message,
-            intent="blocked", guardrail_status="blocked", guardrail_reason=reason,
+            session_id=session.session_id, role=MessageRole.USER, content=request.message,
+            intent="blocked", guardrail_status=GuardrailStatus.BLOCKED, guardrail_reason=reason,
         )
         bot_msg = await self._message_repo.create(
-            session_id=session.id, role="assistant", content=safe_response,
-            guardrail_status="blocked",
+            session_id=session.session_id, role=MessageRole.ASSISTANT, content=safe_response,
+            guardrail_status=GuardrailStatus.BLOCKED,
         )
-        await self._session_repo.increment_counters(session.id, turn_delta=2)
+        await self._session_repo.increment_counters(session.session_id, turn_delta=2)
         await self._db.commit()
         _, answer_html, _ = self._citations.process(safe_response, {})
         return ChatResponse(
-            message_id=bot_msg.id, session_id=session.id,
+            message_id=bot_msg.message_id, session_id=session.session_id,
             answer=safe_response, answer_html=answer_html, cited_products=[],
-            intent="blocked", guardrail_status="blocked", blocked=True,
+            intent="blocked", guardrail_status=GuardrailStatus.BLOCKED, blocked=True,
             latency_ms=int((time.monotonic() - t_start) * 1000), tokens_used=0,
         )
+
+    async def _generate_suggestions_only(self, user_message: str, bot_response: str) -> list[dict]:
+        """Quick LLM call to generate suggestions for shortcut responses."""
+        try:
+            result = await self._llm.generate(
+                system_prompt=(
+                    "You are a shopping assistant. Given the conversation, respond with JSON:\n"
+                    '{"answer": "<copy the bot response exactly>", "suggestions": [{"label": "...", "message": "..."}]}\n'
+                    "Generate 2-4 contextual follow-up suggestions the customer might want."
+                ),
+                user_message=user_message,
+                history=[],
+                tool_result_summary=bot_response,
+                tool_name="direct_answer",
+            )
+            return self._build_suggestions(result.suggestions)
+        except Exception:
+            return []
 
     async def _question_response(
         self, session, request, question, intent, t_start
     ) -> ChatResponse:
-        """Return clarifying question — zero LLM cost."""
         await self._message_repo.create(
-            session_id=session.id, role="user", content=request.message,
-            intent=intent, guardrail_status="passed",
+            session_id=session.session_id, role=MessageRole.USER, content=request.message,
+            intent=intent, guardrail_status=GuardrailStatus.PASSED,
         )
         bot_msg = await self._message_repo.create(
-            session_id=session.id, role="assistant", content=question,
-            intent="slot_filling", guardrail_status="passed", llm_model="rule_based",
+            session_id=session.session_id, role=MessageRole.ASSISTANT, content=question,
+            intent="slot_filling", guardrail_status=GuardrailStatus.PASSED, llm_model="rule_based",
         )
-        await self._session_repo.increment_counters(session.id, turn_delta=2)
+        await self._session_repo.increment_counters(session.session_id, turn_delta=2)
         await self._db.commit()
         _, answer_html, _ = self._citations.process(question, {})
+        suggestions = await self._generate_suggestions_only(request.message, question)
         return ChatResponse(
-            message_id=bot_msg.id, session_id=session.id,
+            message_id=bot_msg.message_id, session_id=session.session_id,
             answer=question, answer_html=answer_html, cited_products=[],
-            suggestions=[],
-            intent="slot_filling", guardrail_status="passed", blocked=False,
+            suggestions=suggestions,
+            intent="slot_filling", guardrail_status=GuardrailStatus.PASSED, blocked=False,
             latency_ms=int((time.monotonic() - t_start) * 1000), tokens_used=0,
         )
 
@@ -557,41 +569,43 @@ class ChatService:
         self, session, request, answer, intent, t_start
     ) -> ChatResponse:
         await self._message_repo.create(
-            session_id=session.id, role="user", content=request.message,
-            intent=intent, guardrail_status="passed",
+            session_id=session.session_id, role=MessageRole.USER, content=request.message,
+            intent=intent, guardrail_status=GuardrailStatus.PASSED,
         )
         bot_msg = await self._message_repo.create(
-            session_id=session.id, role="assistant", content=answer,
-            intent=intent, guardrail_status="passed", llm_model="direct",
+            session_id=session.session_id, role=MessageRole.ASSISTANT, content=answer,
+            intent=intent, guardrail_status=GuardrailStatus.PASSED, llm_model="direct",
         )
-        await self._session_repo.increment_counters(session.id, turn_delta=2)
+        await self._session_repo.increment_counters(session.session_id, turn_delta=2)
         await self._db.commit()
         _, answer_html, _ = self._citations.process(answer, {})
+        suggestions = await self._generate_suggestions_only(request.message, answer)
         return ChatResponse(
-            message_id=bot_msg.id, session_id=session.id,
+            message_id=bot_msg.message_id, session_id=session.session_id,
             answer=answer, answer_html=answer_html, cited_products=[],
-            suggestions=[],
-            intent=intent, guardrail_status="passed", blocked=False,
+            suggestions=suggestions,
+            intent=intent, guardrail_status=GuardrailStatus.PASSED, blocked=False,
             latency_ms=int((time.monotonic() - t_start) * 1000), tokens_used=0,
         )
 
     async def _error_response(self, session, request, t_start) -> ChatResponse:
         msg = "I'm having a bit of trouble right now. Please try again in a moment."
         await self._message_repo.create(
-            session_id=session.id, role="user", content=request.message, intent="error",
+            session_id=session.session_id, role=MessageRole.USER, content=request.message, intent="error",
         )
         bot_msg = await self._message_repo.create(
-            session_id=session.id, role="assistant", content=msg,
-            guardrail_status="passed", llm_model="fallback",
+            session_id=session.session_id, role=MessageRole.ASSISTANT, content=msg,
+            guardrail_status=GuardrailStatus.PASSED, llm_model="fallback",
         )
-        await self._session_repo.increment_counters(session.id, turn_delta=2)
+        await self._session_repo.increment_counters(session.session_id, turn_delta=2)
         await self._db.commit()
         _, answer_html, _ = self._citations.process(msg, {})
+        suggestions = await self._generate_suggestions_only(request.message, msg)
         return ChatResponse(
-            message_id=bot_msg.id, session_id=session.id,
+            message_id=bot_msg.message_id, session_id=session.session_id,
             answer=msg, answer_html=answer_html, cited_products=[],
-            suggestions=[],
-            intent="error", guardrail_status="passed", blocked=False,
+            suggestions=suggestions,
+            intent="error", guardrail_status=GuardrailStatus.PASSED, blocked=False,
             latency_ms=int((time.monotonic() - t_start) * 1000), tokens_used=0,
         )
 
@@ -641,7 +655,7 @@ async def _bg_summarise(session_id: uuid.UUID) -> None:
                 return
 
             transcript = "\n".join(
-                f"{'Customer' if m.role == 'user' else 'Bot'}: {m.content}"
+                f"{'Customer' if m.role == MessageRole.USER else 'Bot'}: {m.content}"
                 for m in messages[:-12]   # summarise older turns, keep last 6
             )
 

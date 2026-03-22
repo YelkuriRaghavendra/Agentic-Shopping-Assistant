@@ -39,13 +39,20 @@ class ChatRequest(BaseModel):
     message:     str = Field(..., min_length=1, max_length=2000, description="Customer message")
     customer_id: uuid.UUID | None = Field(None, description="Omit for anonymous/guest")
     session_id:  uuid.UUID | None = Field(None, description="Omit to auto-resolve session")
-    channel:     Literal["web", "mobile", "whatsapp", "sdk"] = "web"
+    channel:     Literal["WEB", "MOBILE", "WHATSAPP", "SDK"] = "WEB"
     filters:     dict[str, Any] = Field(default_factory=dict, description="Optional RAG filters")
 
     @field_validator("message")
     @classmethod
     def strip_message(cls, v: str) -> str:
         return v.strip()
+
+    @field_validator("channel", mode="before")
+    @classmethod
+    def normalise_channel(cls, v: str) -> str:
+        if isinstance(v, str):
+            return v.upper()
+        return v
 
 
 class CustomerCreateRequest(BaseModel):
@@ -60,14 +67,28 @@ class FeedbackRequest(BaseModel):
     rating:        Literal[-1, 1] = Field(..., description="1 = helpful, -1 = not helpful")
     comment:       str | None = Field(None, max_length=1000)
     feedback_type: Literal[
-        "helpful", "poor_suggestions", "inaccurate",
-        "bad_experience", "other"
+        "HELPFUL", "POOR_SUGGESTIONS", "INACCURATE",
+        "BAD_EXPERIENCE", "OTHER"
     ] | None = None
+
+    @field_validator("feedback_type", mode="before")
+    @classmethod
+    def normalise_feedback_type(cls, v):
+        if isinstance(v, str):
+            return v.upper()
+        return v
 
 
 class SessionCreateRequest(BaseModel):
     customer_id: uuid.UUID | None = None
-    channel:     Literal["web", "mobile", "whatsapp", "sdk"] = "web"
+    channel:     Literal["WEB", "MOBILE", "WHATSAPP", "SDK"] = "WEB"
+
+    @field_validator("channel", mode="before")
+    @classmethod
+    def normalise_channel(cls, v: str) -> str:
+        if isinstance(v, str):
+            return v.upper()
+        return v
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -99,14 +120,14 @@ class ChatResponse(BaseModel):
     cited_products:   list[ProductCardDTO]
     suggestions:      list[dict] = Field(default_factory=list, description="Tappable suggestion chips")
     intent:           str
-    guardrail_status: Literal["passed", "blocked", "warned"]
+    guardrail_status: str
     blocked:          bool
     latency_ms:       int
     tokens_used:      int
 
 
 class SessionResponse(BaseModel):
-    id:            uuid.UUID
+    session_id:    uuid.UUID
     customer_id:   uuid.UUID | None
     channel:       str
     status:        str
@@ -119,7 +140,7 @@ class SessionResponse(BaseModel):
 
 
 class CustomerResponse(BaseModel):
-    id:          uuid.UUID
+    customer_id: uuid.UUID
     external_id: str | None
     email:       str | None
     name:        str | None
@@ -131,7 +152,7 @@ class CustomerResponse(BaseModel):
 
 
 class MessageResponse(BaseModel):
-    id:             uuid.UUID
+    message_id:     uuid.UUID
     role:           str
     content:        str
     cited_products: list[dict[str, Any]]
@@ -142,12 +163,12 @@ class MessageResponse(BaseModel):
 
 
 class FeedbackResponse(BaseModel):
-    id:            uuid.UUID
-    session_id:    uuid.UUID
-    rating:        int
-    comment:       str | None
-    feedback_type: str | None
-    created_at:    datetime
+    session_feedback_id: uuid.UUID
+    session_id:          uuid.UUID
+    rating:              int
+    comment:             str | None
+    feedback_type:       str | None
+    created_at:          datetime
 
     model_config = {"from_attributes": True}
 

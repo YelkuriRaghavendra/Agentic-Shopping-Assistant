@@ -7,14 +7,14 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.models import Message
+from app.db.models.message import Message
 from app.db.repositories.base_repository import BaseRepository
 
 
 class MessageRepository(BaseRepository[Message]):
 
     def __init__(self, db: AsyncSession):
-        super().__init__(Message, db)
+        super().__init__(Message, db, pk_column="message_id")
 
     async def create(
         self,
@@ -56,7 +56,7 @@ class MessageRepository(BaseRepository[Message]):
     ) -> list[Message]:
         """
         Cursor-based pagination — returns messages before the cursor.
-        Use returned[-1].id as the next cursor.
+        Use returned[-1].message_id as the next cursor.
         """
         query = (
             select(Message)
@@ -66,7 +66,7 @@ class MessageRepository(BaseRepository[Message]):
         )
         if before_id:
             cursor_result = await self._db.execute(
-                select(Message.created_at).where(Message.id == before_id)
+                select(Message.created_at).where(Message.message_id == before_id)
             )
             cursor_ts = cursor_result.scalar_one_or_none()
             if cursor_ts:

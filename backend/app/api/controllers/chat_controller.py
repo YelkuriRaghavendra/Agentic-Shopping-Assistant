@@ -43,7 +43,6 @@ from app.services.memory_service import MemoryService
 from app.services.prompt_builder_service import PromptBuilderService
 from app.services.citation_service import CitationService
 from app.services.rate_limiter_service import RateLimiterService
-from app.services.suggestion_service import SuggestionService
 from app.services.tool_registry import ToolRegistry
 from app.services.skills.skill_registry import SkillRegistry
 
@@ -58,7 +57,6 @@ _rate_limiter  = RateLimiterService()
 _guardrails    = GuardrailsService()
 _prompt        = PromptBuilderService()
 _citations     = CitationService()
-_suggestions   = SuggestionService()
 _skills        = SkillRegistry()
 
 
@@ -79,7 +77,6 @@ def _make_chat_service(db: AsyncSession) -> ChatService:
         prompt=_prompt,
         citations=_citations,
         tools=ToolRegistry(_rag_client),
-        suggestions=_suggestions,
         skills=_skills,
     )
 
@@ -146,7 +143,7 @@ class ChatController:
             limit=limit,
             before_id=before_id,
         )
-        next_cursor = messages[0].id if len(messages) == limit else None
+        next_cursor = messages[0].message_id if len(messages) == limit else None
         return MessageHistoryResponse(
             messages=[MessageResponse.model_validate(m) for m in messages],
             next_cursor=next_cursor,
