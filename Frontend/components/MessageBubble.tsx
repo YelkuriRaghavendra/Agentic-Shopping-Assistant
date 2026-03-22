@@ -1,7 +1,6 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Bot, User } from "lucide-react";
 import { cn, formatTimestamp } from "@/lib/utils";
 import { sanitizeHtml } from "@/lib/sanitize";
 import { ProductSlider } from "@/components/ProductSlider";
@@ -19,56 +18,55 @@ export function MessageBubble({ message, onSelectProduct, onSelectSuggestion }: 
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 12 }}
+      initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3, ease: "easeOut" }}
-      className={cn(
-        "flex w-full gap-3 px-4 py-1",
-        isUser ? "flex-row-reverse" : "flex-row"
-      )}
+      transition={{ duration: 0.25, ease: "easeOut" }}
+      className={cn("flex w-full gap-3 px-6 py-2", isUser ? "flex-row-reverse" : "flex-row")}
     >
       {/* Avatar */}
       <div
-        className={cn(
-          "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm shadow-md",
+        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[9px] font-mono uppercase tracking-wider"
+        style={
           isUser
-            ? "bg-gradient-to-br from-emerald-400 to-teal-500"
-            : "bg-gradient-to-br from-violet-500 to-indigo-600"
-        )}
+            ? { background: "#1D9E75", color: "#000" }
+            : { background: "#111116", border: "1px solid rgba(29,158,117,0.3)", color: "#1D9E75" }
+        }
       >
-        {isUser ? (
-          <User className="h-4 w-4 text-white" />
-        ) : (
-          <Bot className="h-4 w-4 text-white" />
-        )}
+        {isUser ? "U" : "Vy"}
       </div>
 
-      {/* Bubble */}
-      <div
-        className={cn(
-          "flex max-w-[75%] flex-col gap-3",
-          isUser ? "items-end" : "items-start"
-        )}
-      >
-        <motion.div
-          whileHover={{ scale: 1.01 }}
-          transition={{ duration: 0.15 }}
-          className={cn(
-            "rounded-2xl px-4 py-2.5 text-sm leading-relaxed shadow-md",
+      {/* Bubble + extras */}
+      <div className={cn("flex max-w-[80%] flex-col gap-2", isUser ? "items-end" : "items-start")}>
+        {/* Text bubble */}
+        <div
+          className="px-4 py-2.5 text-[13px] leading-[1.75]"
+          style={
             isUser
-              ? "rounded-tr-sm bg-gradient-to-br from-violet-600 to-indigo-600 text-white"
-              : "rounded-tl-sm bg-[hsl(var(--card))] text-[hsl(var(--card-foreground))]"
-          )}
+              ? {
+                  background: "linear-gradient(135deg, #1D9E75, #0F6E56)",
+                  borderRadius: "16px 16px 4px 16px",
+                  color: "#fff",
+                  fontWeight: 400,
+                }
+              : {
+                  background: "#111116",
+                  border: "1px solid rgba(255,255,255,0.07)",
+                  borderRadius: "16px 16px 16px 4px",
+                  color: "rgba(255,255,255,0.82)",
+                  fontWeight: 300,
+                }
+          }
         >
           {message.answerHtml ? (
             <div
-              className="prose prose-invert prose-sm"
+              className="prose prose-sm max-w-none"
+              style={{ color: "rgba(255, 255, 255, 1)" }}
               dangerouslySetInnerHTML={{ __html: sanitizeHtml(message.answerHtml) }}
             />
           ) : (
             message.content
           )}
-        </motion.div>
+        </div>
 
         {/* Product slider */}
         {!isUser && message.citedProducts && message.citedProducts.length > 0 && onSelectProduct && (
@@ -81,7 +79,10 @@ export function MessageBubble({ message, onSelectProduct, onSelectSuggestion }: 
         )}
 
         {/* Timestamp */}
-        <span className="text-[11px] text-muted-foreground">
+        <span
+          className="font-mono text-[9px] uppercase tracking-widest"
+          style={{ color: "rgba(255,255,255,0.2)", letterSpacing: "1px" }}
+        >
           {formatTimestamp(message.timestamp)}
         </span>
       </div>

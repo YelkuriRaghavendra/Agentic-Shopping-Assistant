@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
 import type { SuggestionChip } from "@/types/chat.types";
 
 export interface SuggestionChipsProps {
@@ -22,16 +21,29 @@ export function SuggestionChips({ suggestions, onSelectSuggestion }: SuggestionC
   return (
     <div className="flex flex-wrap gap-2 mt-1">
       {suggestions.map((chip, i) => (
-        <Button
+        <button
           key={i}
-          variant="outline"
-          size="sm"
-          className="rounded-full text-xs border-violet-500/40 text-violet-300 hover:bg-violet-500/20 hover:text-violet-100"
           onClick={() => handleClick(chip)}
+          className="font-mono text-[9px] uppercase tracking-widest px-3.5 py-1.5 transition-all duration-150"
+          style={{
+            border: "1px solid rgba(29,158,117,0.3)",
+            background: "rgba(29,158,117,0.05)",
+            color: "rgba(29,158,117,0.8)",
+            borderRadius: "20px",
+            letterSpacing: "1.5px",
+          }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLButtonElement).style.background = "rgba(29,158,117,0.12)";
+            (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(93,202,165,0.6)";
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLButtonElement).style.background = "rgba(29,158,117,0.05)";
+            (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(29,158,117,0.3)";
+          }}
         >
           {chip.icon && <span className="mr-1">{chip.icon}</span>}
           {chip.label}
-        </Button>
+        </button>
       ))}
     </div>
   );

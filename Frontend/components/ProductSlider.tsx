@@ -1,9 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { Star, Send } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import type { ProductCardDTO } from "@/types/chat.types";
 
@@ -17,13 +14,9 @@ function StarRating({ rating }: { rating: number | null }) {
   return (
     <div className="flex gap-0.5" aria-label={`Rating: ${value} out of 5`}>
       {Array.from({ length: 5 }, (_, i) => (
-        <Star
-          key={i}
-          className={cn(
-            "h-3 w-3",
-            i < value ? "fill-amber-400 text-amber-400" : "fill-gray-600 text-gray-600"
-          )}
-        />
+        <span key={i} style={{ color: i < value ? "#1D9E75" : "rgba(255,255,255,0.15)", fontSize: 11 }}>
+          ★
+        </span>
       ))}
     </div>
   );
@@ -31,7 +24,6 @@ function StarRating({ rating }: { rating: number | null }) {
 
 export function ProductSlider({ products, onSelectProduct }: ProductSliderProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
-
   const selectedProduct = products.find((p) => p.productId === selectedId) ?? null;
 
   function handleCardClick(productId: string) {
@@ -45,91 +37,104 @@ export function ProductSlider({ products, onSelectProduct }: ProductSliderProps)
   }
 
   return (
-    <div className="mt-2 flex flex-col gap-2">
-      {/* Scrollable card row */}
-      <div
-        className="flex gap-3 overflow-x-auto pb-2"
-        style={{ scrollSnapType: "x mandatory" }}
-      >
+    <div className="mt-1 flex flex-col gap-2 w-full">
+      {/* Scrollable row */}
+      <div className="flex gap-3 overflow-x-auto pb-1" style={{ scrollSnapType: "x mandatory" }}>
         {products.map((product) => {
           const isSelected = product.productId === selectedId;
           return (
-            <Card
+            <div
               key={product.productId}
               onClick={() => handleCardClick(product.productId)}
-              style={{ scrollSnapAlign: "start", minWidth: "200px", maxWidth: "200px" }}
-              className={cn(
-                "cursor-pointer transition-all duration-150 shrink-0",
-                isSelected
-                  ? "ring-2 ring-violet-500 border-violet-500"
-                  : "hover:border-gray-600"
-              )}
+              className="cursor-pointer shrink-0 flex flex-col transition-all duration-150"
+              style={{
+                width: 180,
+                scrollSnapAlign: "start",
+                background: "#111116",
+                border: isSelected ? "1px solid #1D9E75" : "1px solid rgba(255,255,255,0.07)",
+                borderRadius: "8px",
+                overflow: "hidden",
+              }}
             >
-              {/* Product image */}
-              <div className="relative h-32 w-full overflow-hidden rounded-t-xl bg-gray-700">
+              {/* Image */}
+              <div className="h-28 w-full overflow-hidden" style={{ background: "#141418" }}>
                 {product.productImageUrl ? (
                   <img
                     src={product.productImageUrl}
                     alt={product.productName}
                     className="h-full w-full object-cover"
-                    onError={(e) => {
-                      (e.currentTarget as HTMLImageElement).style.display = "none";
-                    }}
+                    onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
                   />
                 ) : (
-                  <div className="h-full w-full bg-gray-700" />
+                  <div className="h-full w-full flex items-center justify-center">
+                    <span className="font-mono text-[9px] uppercase tracking-widest" style={{ color: "rgba(255,255,255,0.15)" }}>
+                      No image
+                    </span>
+                  </div>
                 )}
               </div>
 
-              <CardContent className="flex flex-col gap-1.5 p-3">
-                {/* Product name */}
+              {/* Info */}
+              <div className="flex flex-col gap-1.5 p-3">
                 <p
-                  className="text-xs font-medium text-gray-100 leading-snug"
+                  className="text-[11px] leading-snug font-inter"
                   style={{
+                    color: "rgba(255,255,255,0.82)",
                     display: "-webkit-box",
                     WebkitLineClamp: 2,
                     WebkitBoxOrient: "vertical",
                     overflow: "hidden",
+                    fontWeight: 300,
                   }}
                 >
                   {product.productName}
                 </p>
 
-                {/* Price */}
-                <p className="text-sm font-semibold text-violet-300">
+                <p className="font-mono text-[11px]" style={{ color: "#1D9E75", letterSpacing: "0.5px" }}>
                   {product.price != null ? `₹${product.price}` : "N/A"}
                 </p>
 
-                {/* Star rating */}
                 <StarRating rating={product.rating} />
 
-                {/* Preview button */}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="mt-1 h-7 w-full text-xs"
-                  asChild
+                <button
+                  className="mt-1 w-full py-1 font-mono text-[9px] uppercase tracking-widest transition-all duration-150"
+                  style={{
+                    border: "1px solid rgba(29,158,117,0.3)",
+                    background: "transparent",
+                    color: "rgba(29,158,117,0.7)",
+                    borderRadius: "4px",
+                    letterSpacing: "1.5px",
+                  }}
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <a href="#">Preview</a>
-                </Button>
-              </CardContent>
-            </Card>
+                  Preview
+                </button>
+              </div>
+            </div>
           );
         })}
       </div>
 
-      {/* Send button — shown only when a card is selected */}
+      {/* Send button */}
       {selectedProduct && (
         <div className="flex justify-end">
-          <Button
-            size="sm"
-            className="gap-1.5 bg-violet-600 hover:bg-violet-700 text-white"
+          <button
             onClick={handleSend}
+            className="flex items-center gap-1.5 px-4 py-2 font-mono text-[9px] uppercase tracking-widest transition-all duration-150"
+            style={{
+              background: "#1D9E75",
+              color: "#000",
+              borderRadius: "4px",
+              letterSpacing: "1.5px",
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#0F6E56"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#1D9E75"; }}
           >
-            <Send className="h-3.5 w-3.5" />
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" />
+            </svg>
             Send
-          </Button>
+          </button>
         </div>
       )}
     </div>

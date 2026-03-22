@@ -13,23 +13,38 @@ export default function ChatPage() {
   const chat = useChat(customer.customerId, sessions.activeSessionId);
 
   return (
-    <main className="flex h-screen w-full bg-[hsl(var(--background))]">
-      {/* Ambient background glow */}
-      <div
-        aria-hidden="true"
-        className="pointer-events-none fixed inset-0 overflow-hidden"
-      >
-        <div className="absolute -left-40 -top-40 h-96 w-96 rounded-full bg-violet-600/20 blur-3xl" />
-        <div className="absolute -bottom-40 -right-40 h-96 w-96 rounded-full bg-indigo-600/20 blur-3xl" />
-      </div>
-
+    <main className="flex h-screen w-full overflow-hidden" style={{ background: "#080809" }}>
       {/* Session sidebar */}
-      <aside className="relative z-10 hidden w-64 shrink-0 border-r border-white/10 sm:flex sm:flex-col">
-        <div className="border-b border-white/10 px-4 py-3">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-white/40">
-            Sessions
-          </h2>
+      <aside
+        className="hidden sm:flex sm:flex-col shrink-0 w-60"
+        style={{
+          background: "#0C0C0F",
+          borderRight: "0.5px solid rgba(255,255,255,0.06)",
+        }}
+      >
+        {/* Sidebar header */}
+        <div
+          className="px-4 py-4 flex items-center gap-2"
+          style={{ borderBottom: "0.5px solid rgba(255,255,255,0.06)" }}
+        >
+          <span
+            className="font-josefin font-700 text-sm tracking-widest uppercase"
+            style={{ color: "#1D9E75", letterSpacing: "3px" }}
+          >
+            Vik
+          </span>
+          <span
+            className="font-josefin font-700 text-sm tracking-widest uppercase"
+            style={{ color: "#fff", letterSpacing: "3px" }}
+          >
+            rai
+          </span>
+          <span
+            className="ml-0.5 inline-block rounded-full animate-glow"
+            style={{ width: 5, height: 5, background: "#1D9E75", flexShrink: 0 }}
+          />
         </div>
+
         <div className="flex-1 overflow-y-auto">
           <SessionSidebar
             sessions={sessions.sessions}
@@ -42,23 +57,20 @@ export default function ChatPage() {
       </aside>
 
       {/* Main chat area */}
-      <div className="relative z-10 flex flex-1 items-center justify-center p-4 sm:p-6 lg:p-8">
-        <div className="h-full w-full max-w-2xl">
-          <ChatWindow
-            messages={chat.messages}
-            sendMessage={chat.sendMessage}
-            sendProductMessage={chat.sendProductMessage}
-            isLoading={chat.isLoading}
-            isTyping={chat.isTyping}
-            inputDisabled={customer.isLoading}
-            sessionEnded={chat.sessionEnded}
-            bottomRef={chat.bottomRef}
-            isHistoryLoading={chat.isHistoryLoading}
-          />
-        </div>
+      <div className="relative flex flex-1 flex-col overflow-hidden">
+        <ChatWindow
+          messages={chat.messages}
+          sendMessage={chat.sendMessage}
+          sendProductMessage={chat.sendProductMessage}
+          isLoading={chat.isLoading}
+          isTyping={chat.isTyping}
+          inputDisabled={customer.isLoading}
+          sessionEnded={chat.sessionEnded}
+          bottomRef={chat.bottomRef}
+          isHistoryLoading={chat.isHistoryLoading}
+        />
       </div>
 
-      {/* User identity dialog */}
       <UserDialog
         open={customer.dialogOpen}
         onSubmit={customer.createCustomer}

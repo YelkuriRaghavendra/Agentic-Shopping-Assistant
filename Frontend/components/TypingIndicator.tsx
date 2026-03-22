@@ -1,19 +1,6 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Bot } from "lucide-react";
-
-const DOT_VARIANTS = {
-  initial: { y: 0 },
-  animate: { y: -6 },
-};
-
-const TRANSITION_BASE = {
-  duration: 0.4,
-  repeat: Infinity,
-  repeatType: "reverse" as const,
-  ease: "easeInOut",
-};
 
 export function TypingIndicator() {
   return (
@@ -22,23 +9,33 @@ export function TypingIndicator() {
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 8 }}
       transition={{ duration: 0.2 }}
-      className="flex items-center gap-3 px-4 py-2"
+      className="flex items-center gap-3 px-6 py-2"
     >
-      {/* Bot avatar */}
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 text-sm shadow-lg">
-        <Bot className="h-4 w-4 text-white" />
+      {/* Avatar */}
+      <div
+        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full font-mono text-[9px] uppercase"
+        style={{ background: "#111116", border: "1px solid rgba(29,158,117,0.3)", color: "#1D9E75" }}
+      >
+        Vy
       </div>
 
       {/* Dots bubble */}
-      <div className="flex items-center gap-1.5 rounded-2xl rounded-tl-sm bg-[hsl(var(--card))] px-4 py-3 shadow-md">
+      <div
+        className="flex items-center gap-1.5 px-4 py-3"
+        style={{
+          background: "#111116",
+          border: "1px solid rgba(255,255,255,0.07)",
+          borderRadius: "16px 16px 16px 4px",
+        }}
+      >
         {[0, 1, 2].map((i) => (
-          <motion.span
+          <span
             key={i}
-            className="block h-2 w-2 rounded-full bg-violet-400"
-            variants={DOT_VARIANTS}
-            initial="initial"
-            animate="animate"
-            transition={{ ...TRANSITION_BASE, delay: i * 0.15 }}
+            className="block h-1.5 w-1.5 rounded-full animate-tdot"
+            style={{
+              background: "#1D9E75",
+              animationDelay: `${i * 0.15}s`,
+            }}
           />
         ))}
       </div>
