@@ -61,7 +61,7 @@ export function ChatWindow({
         </div>
 
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center justify-between gap-2">
             <h1
               className="font-josefin font-bold uppercase tracking-widest text-sm"
               style={{ color: "#fff", letterSpacing: "2px" }}
