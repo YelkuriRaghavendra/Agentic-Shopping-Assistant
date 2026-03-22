@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { cn } from "@/lib/utils";
+import { theme } from "@/lib/theme";
 import type { ProductCardDTO } from "@/types/chat.types";
 
 interface ProductSliderProps {
@@ -14,7 +14,7 @@ function StarRating({ rating }: { rating: number | null }) {
   return (
     <div className="flex gap-0.5" aria-label={`Rating: ${value} out of 5`}>
       {Array.from({ length: 5 }, (_, i) => (
-        <span key={i} style={{ color: i < value ? "#1D9E75" : "rgba(255,255,255,0.15)", fontSize: 11 }}>
+        <span key={i} style={{ color: i < value ? theme.teal[600] : theme.border.default, fontSize: 11 }}>
           ★
         </span>
       ))}
@@ -38,7 +38,7 @@ export function ProductSlider({ products, onSelectProduct }: ProductSliderProps)
 
   return (
     <div className="mt-1 flex flex-col gap-2 w-full">
-      {/* Scrollable row */}
+      {/* Scrollable card row */}
       <div className="flex gap-3 overflow-x-auto pb-1" style={{ scrollSnapType: "x mandatory" }}>
         {products.map((product) => {
           const isSelected = product.productId === selectedId;
@@ -46,18 +46,30 @@ export function ProductSlider({ products, onSelectProduct }: ProductSliderProps)
             <div
               key={product.productId}
               onClick={() => handleCardClick(product.productId)}
-              className="cursor-pointer shrink-0 flex flex-col transition-all duration-150"
+              className="cursor-pointer shrink-0 flex flex-col relative transition-all duration-150"
               style={{
                 width: 180,
                 scrollSnapAlign: "start",
-                background: "#111116",
-                border: isSelected ? "1px solid #1D9E75" : "1px solid rgba(255,255,255,0.07)",
-                borderRadius: "8px",
+                background: theme.bg.surface2,
+                border: `1px solid ${isSelected ? theme.teal[600] : theme.border.default}`,
+                borderRadius: theme.radius.card,
                 overflow: "hidden",
               }}
             >
-              {/* Image */}
-              <div className="h-28 w-full overflow-hidden" style={{ background: "#141418" }}>
+              {/* Selected checkmark badge */}
+              {isSelected && (
+                <div
+                  className="absolute top-2 right-2 z-10 flex h-5 w-5 items-center justify-center rounded-full"
+                  style={{ background: theme.teal[600] }}
+                >
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                </div>
+              )}
+
+              {/* Product image */}
+              <div className="h-28 w-full overflow-hidden" style={{ background: theme.bg.surface3 }}>
                 {product.productImageUrl ? (
                   <img
                     src={product.productImageUrl}
@@ -67,7 +79,7 @@ export function ProductSlider({ products, onSelectProduct }: ProductSliderProps)
                   />
                 ) : (
                   <div className="h-full w-full flex items-center justify-center">
-                    <span className="font-mono text-[9px] uppercase tracking-widest" style={{ color: "rgba(255,255,255,0.15)" }}>
+                    <span style={{ color: theme.text.muted, fontFamily: theme.font.mono, fontSize: 9, letterSpacing: "1.5px", textTransform: "uppercase" }}>
                       No image
                     </span>
                   </div>
@@ -77,58 +89,50 @@ export function ProductSlider({ products, onSelectProduct }: ProductSliderProps)
               {/* Info */}
               <div className="flex flex-col gap-1.5 p-3">
                 <p
-                  className="text-[11px] leading-snug font-inter"
+                  className="text-[11px] leading-snug"
                   style={{
-                    color: "rgba(255,255,255,0.82)",
+                    color: theme.text.primary,
+                    fontFamily: theme.font.inter,
+                    fontWeight: 300,
                     display: "-webkit-box",
                     WebkitLineClamp: 2,
                     WebkitBoxOrient: "vertical",
                     overflow: "hidden",
-                    fontWeight: 300,
                   }}
                 >
                   {product.productName}
                 </p>
 
-                <p className="font-mono text-[11px]" style={{ color: "#1D9E75", letterSpacing: "0.5px" }}>
+                <p style={{ color: theme.teal[600], fontFamily: theme.font.mono, fontSize: 11, letterSpacing: "0.5px" }}>
                   {product.price != null ? `₹${product.price}` : "N/A"}
                 </p>
 
                 <StarRating rating={product.rating} />
-
-                <button
-                  className="mt-1 w-full py-1 font-mono text-[9px] uppercase tracking-widest transition-all duration-150"
-                  style={{
-                    border: "1px solid rgba(29,158,117,0.3)",
-                    background: "transparent",
-                    color: "rgba(29,158,117,0.7)",
-                    borderRadius: "4px",
-                    letterSpacing: "1.5px",
-                  }}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  Preview
-                </button>
               </div>
             </div>
           );
         })}
       </div>
 
-      {/* Send button */}
+      {/* Send button — only when a card is selected */}
       {selectedProduct && (
         <div className="flex justify-end">
           <button
             onClick={handleSend}
-            className="flex items-center gap-1.5 px-4 py-2 font-mono text-[9px] uppercase tracking-widest transition-all duration-150"
+            className="flex items-center gap-1.5 px-4 py-2 transition-all duration-150"
             style={{
-              background: "#1D9E75",
+              background: theme.teal[600],
               color: "#000",
-              borderRadius: "4px",
+              borderRadius: theme.radius.sharp,
+              fontFamily: theme.font.mono,
+              fontSize: "9px",
               letterSpacing: "1.5px",
+              textTransform: "uppercase",
+              border: "none",
+              cursor: "pointer",
             }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#0F6E56"; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "#1D9E75"; }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = theme.teal[700]; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = theme.teal[600]; }}
           >
             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" />

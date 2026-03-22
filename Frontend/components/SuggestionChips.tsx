@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { SuggestionChip } from "@/types/chat.types";
+import { chipStyle, chipHoverStyle } from "@/lib/theme";
 
 export interface SuggestionChipsProps {
   suggestions: SuggestionChip[];
@@ -24,22 +25,9 @@ export function SuggestionChips({ suggestions, onSelectSuggestion }: SuggestionC
         <button
           key={i}
           onClick={() => handleClick(chip)}
-          className="font-mono text-[9px] uppercase tracking-widest px-3.5 py-1.5 transition-all duration-150"
-          style={{
-            border: "1px solid rgba(29,158,117,0.3)",
-            background: "rgba(29,158,117,0.05)",
-            color: "rgba(29,158,117,0.8)",
-            borderRadius: "20px",
-            letterSpacing: "1.5px",
-          }}
-          onMouseEnter={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.background = "rgba(29,158,117,0.12)";
-            (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(93,202,165,0.6)";
-          }}
-          onMouseLeave={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.background = "rgba(29,158,117,0.05)";
-            (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(29,158,117,0.3)";
-          }}
+          style={chipStyle}
+          onMouseEnter={(e) => Object.assign((e.currentTarget as HTMLButtonElement).style, chipHoverStyle)}
+          onMouseLeave={(e) => Object.assign((e.currentTarget as HTMLButtonElement).style, { background: chipStyle.background, border: chipStyle.border })}
         >
           {chip.icon && <span className="mr-1">{chip.icon}</span>}
           {chip.label}
