@@ -56,7 +56,7 @@ export default function useCustomer(): UseCustomerReturn {
         name,
         email,
       });
-      localStorage.setItem("customer_id", data.id);
+      localStorage.setItem("customer_id", data.customer_id);
       setCustomer(data);
       setDialogOpen(false);
     } catch (err: unknown) {
@@ -70,7 +70,7 @@ export default function useCustomer(): UseCustomerReturn {
 
   return {
     customer,
-    customerId: customer?.id ?? null,
+    customerId: customer?.customer_id ?? null,
     isLoading,
     dialogOpen,
     error,

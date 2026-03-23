@@ -52,7 +52,7 @@ export function useSessions(customerId: string | null): UseSessionsReturn {
       { customer_id: cid, channel: "web" }
     );
     setSessions((prev) => [newSession, ...prev]);
-    setActiveSessionId(newSession.id);
+    setActiveSessionId(newSession.session_id);
   }, []);
 
   return { sessions, activeSessionId, isLoading, selectSession, createSession };

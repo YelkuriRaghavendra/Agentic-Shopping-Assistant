@@ -66,7 +66,7 @@ export interface ChatResponse {
 }
 
 export interface CustomerResponse {
-  id: string;
+  customer_id: string;
   external_id: string | null;
   email: string | null;
   name: string | null;
@@ -76,7 +76,7 @@ export interface CustomerResponse {
 }
 
 export interface SessionResponse {
-  id: string;
+  session_id: string;
   customer_id: string | null;
   channel: string;
   status: "active" | "ended";
@@ -87,7 +87,7 @@ export interface SessionResponse {
 }
 
 export interface MessageResponse {
-  id: string;
+  message_id: string;
   role: string;
   content: string;
   cited_products: Record<string, unknown>[];
