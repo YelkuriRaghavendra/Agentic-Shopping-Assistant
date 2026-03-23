@@ -60,22 +60,24 @@ export function useChat(
         );
         if (cancelled) return;
 
-        const loaded: ChatMessageUI[] = data.messages.map((msg) => {
-          // Extract answer_html from cited_products metadata if present
-          const citedMeta = msg.cited_products?.[0] as Record<string, unknown> | undefined;
-          const answerHtml =
-            typeof citedMeta?.answer_html === "string" && citedMeta.answer_html
-              ? citedMeta.answer_html
-              : undefined;
+        const loaded: ChatMessageUI[] = data.messages
+          .slice()
+          .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+          .map((msg) => {
+            const citedMeta = msg.cited_products?.[0] as Record<string, unknown> | undefined;
+            const answerHtml =
+              typeof citedMeta?.answer_html === "string" && citedMeta.answer_html
+                ? citedMeta.answer_html
+                : undefined;
 
-          return {
-            id: msg.id,
-            role: (msg.role === "user" ? "user" : "bot") as "user" | "bot",
-            content: msg.content,
-            ...(answerHtml ? { answerHtml } : {}),
-            timestamp: new Date(msg.created_at),
-          };
-        });
+            return {
+              id: msg.message_id,
+              role: (msg.role.toLowerCase() === "user" ? "user" : "bot") as "user" | "bot",
+              content: msg.content,
+              ...(answerHtml ? { answerHtml } : {}),
+              timestamp: new Date(msg.created_at),
+            };
+          });
         setMessages(loaded);
         setActiveSessionId(sessionId);
         scrollToBottom();
@@ -102,11 +104,11 @@ export function useChat(
         setIsLoading(true);
         setError(null);
         try {
-          const newSession = await httpClient.post<{ id: string }>(
+          const newSession = await httpClient.post<{ session_id: string }>(
             endpoints.createSession,
             { customer_id: customerId, channel: "web" }
           );
-          setActiveSessionId(newSession.id);
+          setActiveSessionId(newSession.session_id);
           setMessages([]);
           setSessionEnded(false);
           const infoMsg: ChatMessageUI = {

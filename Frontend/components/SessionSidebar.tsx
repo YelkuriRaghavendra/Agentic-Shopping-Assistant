@@ -86,11 +86,12 @@ export function SessionSidebar({
         </p>
       ) : (
         sessions.map((session) => {
-          const isActive = session.id === activeSessionId;
+          const isActive = session.session_id === activeSessionId;
+          const isLive = session.status.toLowerCase() === "active";
           return (
             <button
-              key={session.id}
-              onClick={() => onSelectSession(session.id)}
+              key={session.session_id}
+              onClick={() => onSelectSession(session.session_id)}
               data-testid="session-entry"
               className="flex w-full flex-col gap-1 px-3 py-2.5 text-left transition-all duration-150"
               style={{
@@ -105,15 +106,25 @@ export function SessionSidebar({
               >
                 {formatDate(session.started_at)}
               </span>
-              <span
-                className="font-mono text-[9px] uppercase tracking-widest"
-                style={{
-                  color: session.status === "active" ? "#1D9E75" : "rgba(255,255,255,0.25)",
-                  letterSpacing: "1.5px",
-                }}
-              >
-                {session.status === "active" ? "● Active" : "○ Ended"}
-              </span>
+              <div className="flex items-center justify-between gap-2">
+                <span
+                  className="font-mono text-[9px] uppercase tracking-widest"
+                  style={{
+                    color: isLive ? "#1D9E75" : "rgba(255,255,255,0.25)",
+                    letterSpacing: "1.5px",
+                  }}
+                >
+                  {isLive ? "● Active" : "○ Ended"}
+                </span>
+                {session.message_count > 0 && (
+                  <span
+                    className="font-mono text-[9px]"
+                    style={{ color: "rgba(255,255,255,0.2)" }}
+                  >
+                    {session.message_count} msg
+                  </span>
+                )}
+              </div>
             </button>
           );
         })
