@@ -15,7 +15,30 @@ const config: Config = {
       screens: { "2xl": "1400px" },
     },
     extend: {
+      fontFamily: {
+        inter: ["var(--font-inter)", "sans-serif"],
+        josefin: ["var(--font-josefin)", "sans-serif"],
+        mono: ["var(--font-mono)", "monospace"],
+      },
       colors: {
+        teal: {
+          DEFAULT: "#1D9E75",
+          dark: "#0F6E56",
+          light: "#5DCAA5",
+          mist: "#E1F5EE",
+          900: "#04342C",
+          800: "#085041",
+          700: "#0F6E56",
+          600: "#1D9E75",
+          400: "#5DCAA5",
+          50: "#E1F5EE",
+        },
+        surface: {
+          1: "#0C0C0F",
+          2: "#111116",
+          3: "#141418",
+          feed: "#080809",
+        },
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",

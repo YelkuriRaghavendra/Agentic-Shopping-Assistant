@@ -1,7 +1,5 @@
 "use client";
 
-import { Plus } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { SessionResponse } from "@/types/chat.types";
 
@@ -18,7 +16,6 @@ function formatDate(dateStr: string): string {
     return new Date(dateStr).toLocaleString(undefined, {
       month: "short",
       day: "numeric",
-      year: "numeric",
       hour: "2-digit",
       minute: "2-digit",
     });
@@ -36,24 +33,57 @@ export function SessionSidebar({
 }: SessionSidebarProps) {
   return (
     <div className="flex flex-col gap-1 p-3">
-      <Button
-        variant="outline"
-        className="mb-2 w-full border-gray-700 bg-gray-800 text-gray-100 hover:bg-gray-700 hover:text-white"
+      {/* New Session button */}
+      <button
         onClick={onNewSession}
+        className="mb-2 w-full flex items-center justify-center gap-2 py-2.5 px-4 font-mono text-[10px] uppercase tracking-widest transition-all duration-200"
+        style={{
+          background: "rgba(29,158,117,0.05)",
+          border: "1px solid rgba(29,158,117,0.3)",
+          borderRadius: "4px",
+          color: "rgba(29,158,117,0.8)",
+          letterSpacing: "1.5px",
+        }}
+        onMouseEnter={(e) => {
+          (e.currentTarget as HTMLButtonElement).style.background = "rgba(29,158,117,0.12)";
+          (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(93,202,165,0.6)";
+        }}
+        onMouseLeave={(e) => {
+          (e.currentTarget as HTMLButtonElement).style.background = "rgba(29,158,117,0.05)";
+          (e.currentTarget as HTMLButtonElement).style.borderColor = "rgba(29,158,117,0.3)";
+        }}
       >
-        <Plus className="mr-2 h-4 w-4" />
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+          <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+        </svg>
         New Session
-      </Button>
+      </button>
+
+      {/* Session label */}
+      <p
+        className="font-mono text-[9px] uppercase tracking-widest px-1 mb-1"
+        style={{ color: "rgba(29,158,117,0.5)", letterSpacing: "3px" }}
+      >
+        // Sessions
+      </p>
 
       {isLoading ? (
         <>
           {[0, 1, 2].map((i) => (
             <div
               key={i}
-              className="animate-pulse rounded-lg bg-gray-700 h-14"
+              className="animate-pulse rounded h-12"
+              style={{ background: "#141418" }}
             />
           ))}
         </>
+      ) : sessions.length === 0 ? (
+        <p
+          className="font-mono text-[9px] uppercase tracking-widest px-1 py-4 text-center"
+          style={{ color: "rgba(255,255,255,0.2)" }}
+        >
+          No sessions yet
+        </p>
       ) : (
         sessions.map((session) => {
           const isActive = session.id === activeSessionId;
@@ -62,25 +92,27 @@ export function SessionSidebar({
               key={session.id}
               onClick={() => onSelectSession(session.id)}
               data-testid="session-entry"
-              className={cn(
-                "flex w-full flex-col gap-1 rounded-lg px-3 py-2.5 text-left text-sm transition-colors",
-                isActive
-                  ? "bg-violet-600 text-white"
-                  : "bg-gray-800 text-gray-100 hover:bg-gray-700"
-              )}
+              className="flex w-full flex-col gap-1 px-3 py-2.5 text-left transition-all duration-150"
+              style={{
+                background: isActive ? "rgba(29,158,117,0.12)" : "transparent",
+                borderRadius: "4px",
+                borderLeft: isActive ? "2px solid #1D9E75" : "2px solid transparent",
+              }}
             >
-              <span className="truncate text-xs opacity-75">
+              <span
+                className="font-mono text-[9px] uppercase tracking-wider truncate"
+                style={{ color: isActive ? "#5DCAA5" : "rgba(255,255,255,0.4)", letterSpacing: "1px" }}
+              >
                 {formatDate(session.started_at)}
               </span>
               <span
-                className={cn(
-                  "inline-flex w-fit items-center rounded-full px-2 py-0.5 text-[10px] font-medium",
-                  session.status === "active"
-                    ? "bg-emerald-500/20 text-emerald-400"
-                    : "bg-gray-600/40 text-gray-400"
-                )}
+                className="font-mono text-[9px] uppercase tracking-widest"
+                style={{
+                  color: session.status === "active" ? "#1D9E75" : "rgba(255,255,255,0.25)",
+                  letterSpacing: "1.5px",
+                }}
               >
-                {session.status}
+                {session.status === "active" ? "● Active" : "○ Ended"}
               </span>
             </button>
           );

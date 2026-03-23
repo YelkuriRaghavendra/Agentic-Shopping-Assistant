@@ -1,10 +1,6 @@
 "use client";
 
 import { useState, type KeyboardEvent } from "react";
-import { motion } from "framer-motion";
-import { SendHorizonal } from "lucide-react";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 
 interface ChatInputProps {
   onSend: (message: string) => void;
@@ -28,40 +24,57 @@ export function ChatInput({ onSend, disabled = false, sessionEnded = false }: Ch
     }
   };
 
+  const placeholder = disabled && sessionEnded
+    ? "This session has ended"
+    : disabled
+    ? "Thinking..."
+    : value.startsWith("/")
+    ? "Commands: /start · /end"
+    : "Ask me anything...";
+
   return (
-    <div className="flex items-center gap-2 border-t border-white/10 bg-[hsl(var(--background))] px-4 py-3">
-      <div className="flex-1">
-        <Input
+    <div
+      className="flex items-center gap-3 px-4 py-3 shrink-0"
+      style={{ borderTop: "0.5px solid rgba(255,255,255,0.06)", background: "#0C0C0F" }}
+    >
+      <div className="flex flex-1 items-center gap-2 px-4 py-2.5" style={{
+        background: "rgba(255,255,255,0.03)",
+        border: "1px solid rgba(255,255,255,0.09)",
+        borderRadius: "24px",
+        transition: "border-color 0.2s ease",
+      }}>
+        <input
           type="text"
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={handleKeyDown}
           disabled={disabled}
-          placeholder={
-            disabled && sessionEnded
-              ? "This session has ended"
-              : disabled
-              ? "Assistant is typing..."
-              : value.startsWith("/")
-              ? "Commands: /start · /end"
-              : "Ask me anything about products..."
-          }
+          placeholder={placeholder}
           aria-label="Chat message input"
-          className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white placeholder:text-white/30 outline-none transition-all focus:border-violet-500/60 focus:ring-1 focus:ring-violet-500/40 disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex-1 bg-transparent text-[13px] outline-none disabled:cursor-not-allowed"
+          style={{
+            color: "rgba(255,255,255,0.65)",
+            fontFamily: "var(--font-inter)",
+            fontWeight: 300,
+          }}
         />
       </div>
 
-      <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-        <Button
-          onClick={handleSend}
-          disabled={disabled || !value.trim()}
-          aria-label="Send message"
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-600 to-indigo-600 text-white shadow-lg shadow-violet-500/25 transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
-          size="icon"
-        >
-          <SendHorizonal className="h-4 w-4" />
-        </Button>
-      </motion.div>
+      {/* Send button */}
+      <button
+        onClick={handleSend}
+        disabled={disabled || !value.trim()}
+        aria-label="Send message"
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-30"
+        style={{
+          background: value.trim() && !disabled ? "#1D9E75" : "rgba(255,255,255,0.08)",
+        }}
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: value.trim() && !disabled ? "#000" : "rgba(255,255,255,0.4)" }}>
+          <line x1="22" y1="2" x2="11" y2="13" />
+          <polygon points="22 2 15 22 11 13 2 9 22 2" />
+        </svg>
+      </button>
     </div>
   );
 }

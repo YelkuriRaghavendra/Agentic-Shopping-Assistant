@@ -6,35 +6,26 @@
 
 @layer base {
   :root {
-    --background: 224 71% 4%;
-    --foreground: 213 31% 91%;
-
-    --card: 224 71% 4%;
-    --card-foreground: 213 31% 91%;
-
-    --popover: 224 71% 4%;
-    --popover-foreground: 213 31% 91%;
-
-    --primary: 263 70% 50%;
-    --primary-foreground: 210 40% 98%;
-
-    --secondary: 222 47% 11%;
-    --secondary-foreground: 210 40% 98%;
-
-    --muted: 223 47% 11%;
-    --muted-foreground: 215 20% 65%;
-
-    --accent: 216 34% 17%;
-    --accent-foreground: 210 40% 98%;
-
+    --background: 0 0% 4%;
+    --foreground: 0 0% 95%;
+    --card: 240 7% 7%;
+    --card-foreground: 0 0% 95%;
+    --popover: 240 7% 7%;
+    --popover-foreground: 0 0% 95%;
+    --primary: 161 69% 37%;
+    --primary-foreground: 0 0% 0%;
+    --secondary: 240 6% 10%;
+    --secondary-foreground: 0 0% 95%;
+    --muted: 240 6% 10%;
+    --muted-foreground: 0 0% 50%;
+    --accent: 240 6% 12%;
+    --accent-foreground: 0 0% 95%;
     --destructive: 0 63% 31%;
-    --destructive-foreground: 210 40% 98%;
-
-    --border: 216 34% 17%;
-    --input: 216 34% 17%;
-    --ring: 263 70% 50%;
-
-    --radius: 0.625rem;
+    --destructive-foreground: 0 0% 95%;
+    --border: 0 0% 100% / 0.07;
+    --input: 0 0% 100% / 0.06;
+    --ring: 161 69% 37%;
+    --radius: 0.5rem;
   }
 
   * {
@@ -43,21 +34,32 @@
 
   body {
     @apply bg-background text-foreground;
+    font-family: 'Inter', sans-serif;
+    font-weight: 300;
     font-feature-settings: "rlig" 1, "calt" 1;
   }
 
-  /* Custom scrollbar */
-  ::-webkit-scrollbar {
-    width: 4px;
-  }
-  ::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  ::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 999px;
-  }
-  ::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.2);
-  }
+  ::-webkit-scrollbar { width: 3px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 999px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(29,158,117,0.4); }
 }
+
+@keyframes glow {
+  0%,100% { box-shadow: 0 0 5px rgba(29,158,117,0.8); }
+  50%      { box-shadow: 0 0 18px rgba(29,158,117,1), 0 0 36px rgba(29,158,117,0.4); }
+}
+
+@keyframes tdot {
+  0%,60%,100% { transform: translateY(0); opacity: 0.5; }
+  30%         { transform: translateY(-5px); opacity: 1; }
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.animate-glow { animation: glow 2.5s ease-in-out infinite; }
+.animate-tdot { animation: tdot 1.2s ease-in-out infinite; }
+.animate-fadeup { animation: fadeUp 0.4s ease-out forwards; }

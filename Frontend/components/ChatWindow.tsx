@@ -1,7 +1,6 @@
 "use client";
 
 import { AnimatePresence } from "framer-motion";
-import { Bot, Sparkles } from "lucide-react";
 import { MessageBubble } from "./MessageBubble";
 import { ChatInput } from "./ChatInput";
 import { TypingIndicator } from "./TypingIndicator";
@@ -22,10 +21,10 @@ export interface ChatWindowProps {
 
 function HistorySkeleton() {
   return (
-    <div className="flex flex-col gap-3 px-4 py-4" aria-label="Loading history">
-      <div className="animate-pulse bg-gray-700 rounded-xl h-12 w-3/4 self-end" />
-      <div className="animate-pulse bg-gray-700 rounded-xl h-12 w-1/2 self-start" />
-      <div className="animate-pulse bg-gray-700 rounded-xl h-12 w-2/3 self-end" />
+    <div className="flex flex-col gap-4 px-6 py-6">
+      <div className="animate-pulse rounded-2xl h-10 w-3/4 self-end" style={{ background: "#141418" }} />
+      <div className="animate-pulse rounded-2xl h-14 w-1/2 self-start" style={{ background: "#141418" }} />
+      <div className="animate-pulse rounded-2xl h-10 w-2/3 self-end" style={{ background: "#141418" }} />
     </div>
   );
 }
@@ -42,26 +41,55 @@ export function ChatWindow({
   isHistoryLoading = false,
 }: ChatWindowProps) {
   return (
-    <div className="flex h-full w-full flex-col overflow-hidden rounded-2xl border border-white/10 bg-[hsl(var(--background))] shadow-2xl shadow-black/40">
+    <div className="flex h-full w-full flex-col" style={{ background: "#080809" }}>
       {/* Header */}
-      <div className="flex items-center gap-3 border-b border-white/10 bg-white/5 px-5 py-4 backdrop-blur-sm">
-        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 shadow-lg shadow-violet-500/30">
-          <Bot className="h-5 w-5 text-white" />
+      <div
+        className="flex items-center gap-3 px-6 py-4 shrink-0"
+        style={{ borderBottom: "0.5px solid rgba(255,255,255,0.06)", background: "#0C0C0F" }}
+      >
+        {/* Avatar */}
+        <div
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
+          style={{
+            background: "#111116",
+            border: "1px solid rgba(29,158,117,0.3)",
+          }}
+        >
+          <span className="font-mono text-[9px] uppercase tracking-wider" style={{ color: "#1D9E75" }}>
+            Vy
+          </span>
         </div>
+
         <div>
-          <div className="flex items-center gap-1.5">
-            <h1 className="text-sm font-semibold text-white">ShopBot AI</h1>
-            <Sparkles className="h-3.5 w-3.5 text-violet-400" />
+          <div className="flex items-center justify-between gap-2">
+            <h1
+              className="font-josefin font-bold uppercase tracking-widest text-sm"
+              style={{ color: "#fff", letterSpacing: "2px" }}
+            >
+              Vik <span style={{color: "#1D9E75"}}>rai</span>
+            </h1>
+            <span
+              className="font-mono text-[9px] uppercase tracking-widest px-2 py-0.5"
+              style={{
+                color: "rgba(29,158,117,0.8)",
+                border: "1px solid rgba(29,158,117,0.18)",
+                letterSpacing: "1.5px",
+              }}
+            >
+              LIVE
+            </span>
           </div>
-          <div className="flex items-center gap-1.5">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/50" />
-            <p className="text-xs text-white/50">Online · Your personal shopping assistant</p>
-          </div>
+          <p
+            className="font-mono text-[9px] uppercase tracking-widest mt-0.5"
+            style={{ color: "rgba(255,255,255,0.3)", letterSpacing: "2px" }}
+          >
+            your commerce companion
+          </p>
         </div>
       </div>
 
       {/* Messages area */}
-      <div className="flex-1 overflow-y-auto py-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/10">
+      <div className="flex-1 overflow-y-auto py-4">
         {isHistoryLoading ? (
           <HistorySkeleton />
         ) : (
@@ -74,17 +102,18 @@ export function ChatWindow({
                 onSelectSuggestion={sendMessage}
               />
             ))}
-
             {isTyping && <TypingIndicator key="typing" />}
           </AnimatePresence>
         )}
-
-        {/* Scroll anchor */}
         <div ref={bottomRef} />
       </div>
 
       {/* Input */}
-      <ChatInput onSend={sendMessage} disabled={inputDisabled || sessionEnded} />
+      <ChatInput
+        onSend={sendMessage}
+        disabled={inputDisabled || sessionEnded}
+        sessionEnded={sessionEnded}
+      />
     </div>
   );
 }

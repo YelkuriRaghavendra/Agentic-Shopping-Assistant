@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
 import type { SuggestionChip } from "@/types/chat.types";
+import { chipStyle, chipHoverStyle } from "@/lib/theme";
 
 export interface SuggestionChipsProps {
   suggestions: SuggestionChip[];
@@ -22,16 +22,16 @@ export function SuggestionChips({ suggestions, onSelectSuggestion }: SuggestionC
   return (
     <div className="flex flex-wrap gap-2 mt-1">
       {suggestions.map((chip, i) => (
-        <Button
+        <button
           key={i}
-          variant="outline"
-          size="sm"
-          className="rounded-full text-xs border-violet-500/40 text-violet-300 hover:bg-violet-500/20 hover:text-violet-100"
           onClick={() => handleClick(chip)}
+          style={chipStyle}
+          onMouseEnter={(e) => Object.assign((e.currentTarget as HTMLButtonElement).style, chipHoverStyle)}
+          onMouseLeave={(e) => Object.assign((e.currentTarget as HTMLButtonElement).style, { background: chipStyle.background, border: chipStyle.border })}
         >
           {chip.icon && <span className="mr-1">{chip.icon}</span>}
           {chip.label}
-        </Button>
+        </button>
       ))}
     </div>
   );
