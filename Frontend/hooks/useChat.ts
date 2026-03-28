@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { httpClient } from "@/services/httpClient";
 import { endpoints } from "@/config/config";
 import type {
@@ -8,12 +9,15 @@ import type {
   ChatRequest,
   ChatResponse,
   MessageHistoryResponse,
+  ProductCardDTO,
+  SessionResponse,
 } from "@/types/chat.types";
 
 interface UseChatReturn {
   messages: ChatMessageUI[];
   sendMessage: (text: string) => void;
   sendProductMessage: (productId: string, productName: string) => void;
+  sendCompareMessage: (products: ProductCardDTO[]) => void;
   isLoading: boolean;
   isTyping: boolean;
   isHistoryLoading: boolean;
@@ -32,13 +36,19 @@ export function useChat(
   sessionId: string | null
 ): UseChatReturn {
   const [messages, setMessages] = useState<ChatMessageUI[]>([]);
+  const queryClient = useQueryClient();
   const [isTyping, setIsTyping] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(sessionId);
   const [sessionEnded, setSessionEnded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const loadingRef = useRef(false);
+
+  const setLoading = useCallback((val: boolean) => {
+    loadingRef.current = val;
+    setIsLoading(val);
+  }, []);
 
   const scrollToBottom = useCallback(() => {
     setTimeout(() => {
@@ -47,61 +57,63 @@ export function useChat(
   }, []);
 
   // Load message history when sessionId prop changes
+  const { data: historyData, isLoading: isHistoryLoading } = useQuery<MessageHistoryResponse>({
+    queryKey: ["messages", sessionId],
+    queryFn: () =>
+      httpClient.get<MessageHistoryResponse>(
+        endpoints.sessionMessages(sessionId!)
+      ),
+    enabled: !!sessionId,
+  });
+
+  useEffect(() => {
+    if (!historyData) return;
+
+    const loaded: ChatMessageUI[] = historyData.messages
+      .slice()
+      .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+      .map((msg) => {
+        const citedMeta = msg.cited_products?.[0] as Record<string, unknown> | undefined;
+        const answerHtml =
+          typeof citedMeta?.answer_html === "string" && citedMeta.answer_html
+            ? citedMeta.answer_html
+            : undefined;
+
+        return {
+          id: msg.message_id,
+          role: (msg.role.toLowerCase() === "user" ? "user" : "bot") as "user" | "bot",
+          content: msg.content,
+          ...(answerHtml ? { answerHtml } : {}),
+          timestamp: new Date(msg.created_at),
+          streamDone: true,
+        };
+      });
+    setMessages(loaded);
+    setActiveSessionId(sessionId);
+    setSessionEnded(false);
+    scrollToBottom();
+  }, [historyData, sessionId, scrollToBottom]);
+
+  // Check session status from cached sessions data to persist ended state across refreshes
   useEffect(() => {
     if (!sessionId) return;
-
-    let cancelled = false;
-
-    async function loadHistory() {
-      setIsHistoryLoading(true);
-      try {
-        const data = await httpClient.get<MessageHistoryResponse>(
-          endpoints.sessionMessages(sessionId!)
-        );
-        if (cancelled) return;
-
-        const loaded: ChatMessageUI[] = data.messages
-          .slice()
-          .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
-          .map((msg) => {
-            const citedMeta = msg.cited_products?.[0] as Record<string, unknown> | undefined;
-            const answerHtml =
-              typeof citedMeta?.answer_html === "string" && citedMeta.answer_html
-                ? citedMeta.answer_html
-                : undefined;
-
-            return {
-              id: msg.message_id,
-              role: (msg.role.toLowerCase() === "user" ? "user" : "bot") as "user" | "bot",
-              content: msg.content,
-              ...(answerHtml ? { answerHtml } : {}),
-              timestamp: new Date(msg.created_at),
-            };
-          });
-        setMessages(loaded);
-        setActiveSessionId(sessionId);
-        scrollToBottom();
-      } catch {
-        // preserve existing messages on history load error
-      } finally {
-        if (!cancelled) setIsHistoryLoading(false);
+    const sessionsData = queryClient.getQueryData<SessionResponse[]>(["sessions", customerId]);
+    if (sessionsData) {
+      const current = sessionsData.find((s) => s.session_id === sessionId);
+      if (current && current.status === "ended") {
+        setSessionEnded(true);
       }
     }
-
-    loadHistory();
-    return () => {
-      cancelled = true;
-    };
-  }, [sessionId, scrollToBottom]);
+  }, [sessionId, customerId, queryClient]);
 
   const sendMessage = useCallback(
     async (text: string) => {
       const trimmed = text.trim();
-      if (!trimmed || isLoading) return;
+      if (!trimmed || loadingRef.current) return;
 
       // Slash command: /start — allowed even when session is ended
       if (trimmed.toLowerCase() === "/start") {
-        setIsLoading(true);
+        setLoading(true);
         setError(null);
         try {
           const newSession = await httpClient.post<{ session_id: string }>(
@@ -128,24 +140,46 @@ export function useChat(
           };
           setMessages((prev) => [...prev, errMsg]);
         } finally {
-          setIsLoading(false);
+          setLoading(false);
         }
         return;
       }
 
-      // Slash command: /end
+      // Slash command: /end (requires confirmation)
       if (trimmed.toLowerCase() === "/end") {
-        if (!activeSessionId || sessionEnded || isLoading) return;
-        setIsLoading(true);
+        if (!activeSessionId || sessionEnded || loadingRef.current) return;
+
+        // Check if last message was the confirmation prompt
+        const lastMsg = messages[messages.length - 1];
+        const isConfirmed = lastMsg?.content === "/end" && lastMsg?.role === "user";
+
+        if (!isConfirmed) {
+          // Show confirmation prompt
+          const userMsg: ChatMessageUI = {
+            id: generateId(), role: "user", content: "/end", timestamp: new Date(), streamDone: true,
+          };
+          const confirmMsg: ChatMessageUI = {
+            id: generateId(), role: "bot", timestamp: new Date(), streamDone: true,
+            content: "Are you sure you want to end this session? Type /end again to confirm.",
+          };
+          setMessages((prev) => [...prev, userMsg, confirmMsg]);
+          scrollToBottom();
+          return;
+        }
+
+        setLoading(true);
         setError(null);
         try {
           await httpClient.post(endpoints.endSession(activeSessionId), {});
           setSessionEnded(true);
+          queryClient.invalidateQueries({ queryKey: ["sessions"] });
+          localStorage.setItem("session_updated", Date.now().toString());
           const infoMsg: ChatMessageUI = {
             id: generateId(),
             role: "bot",
             content: "Session ended.",
             timestamp: new Date(),
+            streamDone: true,
           };
           setMessages((prev) => [...prev, infoMsg]);
           scrollToBottom();
@@ -158,7 +192,7 @@ export function useChat(
           };
           setMessages((prev) => [...prev, errMsg]);
         } finally {
-          setIsLoading(false);
+          setLoading(false);
         }
         return;
       }
@@ -173,8 +207,7 @@ export function useChat(
       };
 
       setMessages((prev) => [...prev, userMessage]);
-      setIsTyping(true);
-      setIsLoading(true);
+      setLoading(true);
       setError(null);
       scrollToBottom();
 
@@ -184,100 +217,267 @@ export function useChat(
         ...(activeSessionId ? { session_id: activeSessionId } : {}),
       };
 
+      // Create a placeholder bot message for streaming
+      const botId = generateId();
+      const botMessage: ChatMessageUI = {
+        id: botId,
+        role: "bot",
+        content: "",
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, botMessage]);
+
+      setIsTyping(true);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 30000);
       try {
-        const data = await httpClient.post<ChatResponse>(endpoints.chat, body);
+        const res = await fetch(endpoints.chatStream, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+          signal: controller.signal,
+        });
 
-        setActiveSessionId(data.session_id);
+        if (!res.ok || !res.body) {
+          if (res.status === 429) {
+            throw new Error("Too many requests. Please wait a moment and try again.");
+          }
+          throw new Error(`HTTP ${res.status}`);
+        }
 
-        const botMessage: ChatMessageUI = {
-          id: data.message_id,
-          role: "bot",
-          content: data.answer,
-          answerHtml: data.answer_html || undefined,
-          timestamp: new Date(),
-          citedProducts: data.cited_products,
-          suggestions: data.suggestions,
-        };
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let streamedContent = "";
 
-        setMessages((prev) => [...prev, botMessage]);
-        scrollToBottom();
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() ?? "";
+
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
+            const jsonStr = line.slice(6).trim();
+            if (!jsonStr) continue;
+
+            try {
+              const event = JSON.parse(jsonStr);
+
+              if (event.type === "token") {
+                streamedContent += event.content;
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === botId ? { ...m, content: streamedContent } : m
+                  )
+                );
+                scrollToBottom();
+              } else if (event.type === "done") {
+                // Final event — add products/suggestions
+                // Use answer_html if content has HTML tags (e.g. tables from comparisons)
+                const hasHtml = /<\/?(?:table|tr|td|th|ul|ol|li)\b/i.test(streamedContent);
+                if (event.session_id) {
+                  setActiveSessionId(event.session_id);
+                }
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === botId
+                      ? {
+                          ...m,
+                          id: event.message_id || botId,
+                          content: streamedContent,
+                          answerHtml: hasHtml && event.answer_html ? event.answer_html : undefined,
+                          citedProducts: event.cited_products,
+                          suggestions: event.suggestions,
+                          streamDone: true,
+                        }
+                      : m
+                  )
+                );
+                scrollToBottom();
+              } else if (event.type === "error") {
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === botId ? { ...m, content: event.content, streamDone: true } : m
+                  )
+                );
+              }
+            } catch {
+              // skip malformed JSON lines
+            }
+          }
+        }
       } catch (err) {
-        const errorMessage: ChatMessageUI = {
-          id: generateId(),
-          role: "bot",
-          content: "Oops, something went wrong. Please try again.",
-          timestamp: new Date(),
-        };
-        setMessages((prev) => [...prev, errorMessage]);
-        setError(err instanceof Error ? err.message : "Unknown error");
+        const errorText = err instanceof Error ? err.message : "Unknown error";
+        // Fallback: if streaming fails, preserve partial content
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === botId
+              ? {
+                  ...m,
+                  content: m.content
+                    ? m.content + "\n\n[Connection lost. Please try again.]"
+                    : "Oops, something went wrong. Please try again.",
+                  streamDone: true,
+                }
+              : m
+          )
+        );
+        setError(errorText);
         scrollToBottom();
       } finally {
+        clearTimeout(timeout);
         setIsTyping(false);
-        setIsLoading(false);
+        setLoading(false);
       }
     },
-    [sessionEnded, isLoading, customerId, activeSessionId, scrollToBottom]
+    [sessionEnded, customerId, activeSessionId, scrollToBottom, setLoading]
   );
 
-  const sendProductMessage = useCallback(
-    async (productId: string, productName: string) => {
-      if (sessionEnded || isLoading) return;
+  // Shared streaming helper for product/compare messages
+  const streamRequest = useCallback(
+    async (displayText: string, apiMessage: string) => {
+      if (sessionEnded || loadingRef.current) return;
 
       const userMessage: ChatMessageUI = {
         id: generateId(),
         role: "user",
-        content: productName,
+        content: displayText,
         timestamp: new Date(),
       };
 
       setMessages((prev) => [...prev, userMessage]);
-      setIsTyping(true);
-      setIsLoading(true);
+      setLoading(true);
       setError(null);
       scrollToBottom();
 
+      const botId = generateId();
+      setMessages((prev) => [...prev, { id: botId, role: "bot", content: "", timestamp: new Date() }]);
+
       const body: ChatRequest = {
-        message: productId,
+        message: apiMessage,
         ...(customerId ? { customer_id: customerId } : {}),
         ...(activeSessionId ? { session_id: activeSessionId } : {}),
       };
 
+      setIsTyping(true);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 30000);
       try {
-        const data = await httpClient.post<ChatResponse>(endpoints.chat, body);
-        setActiveSessionId(data.session_id);
-        const botMessage: ChatMessageUI = {
-          id: data.message_id,
-          role: "bot",
-          content: data.answer,
-          answerHtml: data.answer_html || undefined,
-          timestamp: new Date(),
-          citedProducts: data.cited_products,
-          suggestions: data.suggestions,
-        };
-        setMessages((prev) => [...prev, botMessage]);
-        scrollToBottom();
+        const res = await fetch(endpoints.chatStream, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+          signal: controller.signal,
+        });
+        if (!res.ok || !res.body) {
+          if (res.status === 429) {
+            throw new Error("Too many requests. Please wait a moment and try again.");
+          }
+          throw new Error(`HTTP ${res.status}`);
+        }
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let streamedContent = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() ?? "";
+
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
+            try {
+              const event = JSON.parse(line.slice(6).trim());
+              if (event.type === "token") {
+                streamedContent += event.content;
+                setMessages((prev) =>
+                  prev.map((m) => (m.id === botId ? { ...m, content: streamedContent } : m))
+                );
+                scrollToBottom();
+              } else if (event.type === "done") {
+                const hasHtml = /<\/?(?:table|tr|td|th|ul|ol|li)\b/i.test(streamedContent);
+                if (event.session_id) setActiveSessionId(event.session_id);
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === botId
+                      ? {
+                          ...m,
+                          id: event.message_id || botId,
+                          content: streamedContent,
+                          answerHtml: hasHtml && event.answer_html ? event.answer_html : undefined,
+                          citedProducts: event.cited_products,
+                          suggestions: event.suggestions,
+                          streamDone: true,
+                        }
+                      : m
+                  )
+                );
+                scrollToBottom();
+              } else if (event.type === "error") {
+                setMessages((prev) =>
+                  prev.map((m) => (m.id === botId ? { ...m, content: event.content, streamDone: true } : m))
+                );
+              }
+            } catch {
+              // skip malformed lines
+            }
+          }
+        }
       } catch (err) {
-        const errorMessage: ChatMessageUI = {
-          id: generateId(),
-          role: "bot",
-          content: "Oops, something went wrong. Please try again.",
-          timestamp: new Date(),
-        };
-        setMessages((prev) => [...prev, errorMessage]);
-        setError(err instanceof Error ? err.message : "Unknown error");
+        const errorText = err instanceof Error ? err.message : "Unknown error";
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === botId
+              ? {
+                  ...m,
+                  content: m.content
+                    ? m.content + "\n\n[Connection lost. Please try again.]"
+                    : "Oops, something went wrong. Please try again.",
+                  streamDone: true,
+                }
+              : m
+          )
+        );
+        setError(errorText);
         scrollToBottom();
       } finally {
+        clearTimeout(timeout);
         setIsTyping(false);
-        setIsLoading(false);
+        setLoading(false);
       }
     },
-    [sessionEnded, isLoading, customerId, activeSessionId, scrollToBottom]
+    [sessionEnded, customerId, activeSessionId, scrollToBottom, setLoading]
+  );
+
+  const sendProductMessage = useCallback(
+    (productId: string, productName: string) => {
+      streamRequest(productName, `Tell me more about ${productName}`);
+    },
+    [streamRequest]
+  );
+
+  const sendCompareMessage = useCallback(
+    (products: ProductCardDTO[]) => {
+      if (products.length < 2) return;
+      const names = products.map((p) => p.productName);
+      const compareText = `Compare ${names.join(" and ")}`;
+      streamRequest(compareText, compareText);
+    },
+    [streamRequest]
   );
 
   return {
     messages,
     sendMessage,
     sendProductMessage,
+    sendCompareMessage,
     isLoading,
     isTyping,
     isHistoryLoading,

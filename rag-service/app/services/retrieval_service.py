@@ -83,7 +83,7 @@ class RetrievalService:
         vs_config    = RETRIEVAL_CONFIG["vector_search"]
         rerank_cfg   = RETRIEVAL_CONFIG["reranking"]
         min_score    = vs_config["min_score"]
-        ef_search    = vs_config["hnsw_ef_search"]
+        ef_search    = int(vs_config["hnsw_ef_search"])  # ensure it's an integer
         # fetch more candidates when reranking, else fetch exactly top_k
         fetch_count  = rerank_cfg["max_candidates"] if rerank and rerank_cfg["enabled"] else top_k
 
@@ -91,6 +91,8 @@ class RetrievalService:
         query_vector = await _embedding_client.embed_single(query, active_model.dimensions)
 
         # tune HNSW recall for this query
+        # SET LOCAL doesn't support bind params in asyncpg; int() cast prevents injection
+        ef_search = int(ef_search)
         await self._db.execute(text(f"SET LOCAL hnsw.ef_search = {ef_search}"))
 
         # Build dynamic WHERE clauses based on filters
@@ -108,6 +110,7 @@ class RetrievalService:
         # doc_type filter (defaults to PRODUCT) — validate against known enum values
         resolved_doc_type = (doc_type or "PRODUCT").upper()
         if resolved_doc_type not in _VALID_DOC_TYPES:
+            logger.warning("retrieval.invalid_doc_type", provided=resolved_doc_type, fallback="PRODUCT")
             resolved_doc_type = "PRODUCT"
         where_clauses.append("d.document_type = :doc_type")
         params["doc_type"] = resolved_doc_type

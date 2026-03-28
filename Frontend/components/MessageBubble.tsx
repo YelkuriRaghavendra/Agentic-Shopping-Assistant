@@ -1,23 +1,27 @@
 "use client";
 
+import { memo } from "react";
 import { motion } from "framer-motion";
 import { cn, formatTimestamp } from "@/lib/utils";
 import { sanitizeHtml } from "@/lib/sanitize";
 import { ProductSlider } from "@/components/ProductSlider";
 import { SuggestionChips } from "@/components/SuggestionChips";
-import type { ChatMessageUI } from "@/types/chat.types";
+import type { ChatMessageUI, ProductCardDTO } from "@/types/chat.types";
 
 export interface MessageBubbleProps {
   message: ChatMessageUI;
   onSelectProduct?: (productId: string, productName: string) => void;
   onSelectSuggestion?: (message: string) => void;
+  onCompareProducts?: (products: ProductCardDTO[]) => void;
 }
 
-export function MessageBubble({ message, onSelectProduct, onSelectSuggestion }: MessageBubbleProps) {
+export const MessageBubble = memo(function MessageBubble({ message, onSelectProduct, onSelectSuggestion, onCompareProducts }: MessageBubbleProps) {
   const isUser = message.role === "user";
 
   return (
     <motion.div
+      role="article"
+      aria-label={isUser ? "Your message" : "Assistant message"}
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25, ease: "easeOut" }}
@@ -64,13 +68,16 @@ export function MessageBubble({ message, onSelectProduct, onSelectSuggestion }: 
               dangerouslySetInnerHTML={{ __html: sanitizeHtml(message.answerHtml) }}
             />
           ) : (
-            message.content
+            <>
+              {message.content || null}
+              {!isUser && !message.streamDone && <span className="streaming-cursor" style={{ minHeight: 14 }} />}
+            </>
           )}
         </div>
 
         {/* Product slider */}
         {!isUser && message.citedProducts && message.citedProducts.length > 0 && onSelectProduct && (
-          <ProductSlider products={message.citedProducts} onSelectProduct={onSelectProduct} />
+          <ProductSlider products={message.citedProducts} onSelectProduct={onSelectProduct} onCompareProducts={onCompareProducts} />
         )}
 
         {/* Suggestion chips */}
@@ -88,4 +95,4 @@ export function MessageBubble({ message, onSelectProduct, onSelectSuggestion }: 
       </div>
     </motion.div>
   );
-}
+});

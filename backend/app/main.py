@@ -24,6 +24,7 @@ from app.core.config import get_settings
 from app.core.exceptions import ChatServiceError
 from app.core.logging import setup_logging, get_logger
 from app.db.session import init_db
+from app.clients.redis_client import init_redis, close_redis
 
 settings = get_settings()
 setup_logging()
@@ -35,7 +36,9 @@ async def lifespan(app: FastAPI):
     """Startup and shutdown logic."""
     logger.info("app.starting", version=settings.APP_VERSION)
     await init_db()
+    await init_redis()
     yield
+    await close_redis()
     logger.info("app.shutdown")
 
 
@@ -49,6 +52,7 @@ app = FastAPI(
 )
 
 # ── CORS ──────────────────────────────────────────────────────────────────────
+# TODO: restrict allow_origins to known frontend domains in production
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

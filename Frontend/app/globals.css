@@ -63,3 +63,48 @@
 .animate-glow { animation: glow 2.5s ease-in-out infinite; }
 .animate-tdot { animation: tdot 1.2s ease-in-out infinite; }
 .animate-fadeup { animation: fadeUp 0.4s ease-out forwards; }
+
+/* Streaming cursor — blinking block like Claude UI */
+.streaming-cursor {
+  display: inline-block;
+  width: 7px;
+  height: 14px;
+  background: rgba(29, 158, 117, 0.8);
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  animation: blink-cursor 0.8s step-end infinite;
+}
+
+@keyframes blink-cursor {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* Comparison table styling inside chat bubbles */
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.75rem 0;
+  font-size: 0.85rem;
+}
+.prose thead th {
+  background: rgba(29, 158, 117, 0.15);
+  color: hsl(var(--primary));
+  font-weight: 600;
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+.prose tbody td {
+  padding: 0.4rem 0.75rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  vertical-align: top;
+}
+.prose tbody tr:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+.prose tbody td:first-child {
+  color: hsl(var(--muted-foreground));
+  font-weight: 500;
+  white-space: nowrap;
+}

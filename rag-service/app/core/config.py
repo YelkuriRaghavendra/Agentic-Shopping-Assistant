@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     AZURE_OPENAI_ENDPOINT:      str  = ""
     AZURE_OPENAI_API_VERSION:   str  = "2024-02-15-preview"
     OPENAI_EMBEDDING_MODEL:     str  = "text-embedding-3-large"
+    EMBEDDING_DIMENSIONS:       int  = 1536
 
     # ── Security ──────────────────────────────────────
     API_KEY_HEADER: str = "X-API-Key"

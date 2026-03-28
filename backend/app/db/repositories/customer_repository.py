@@ -54,9 +54,14 @@ class CustomerRepository(BaseRepository[Customer]):
     ) -> None:
         """
         Merge new profile data into existing profile.
-        Uses DB-level update to avoid race conditions.
+        Uses SELECT … FOR UPDATE to lock the row and avoid race conditions.
         """
-        customer = await self.get_by_id(customer_id)
+        result = await self._db.execute(
+            select(Customer)
+            .where(Customer.customer_id == customer_id)
+            .with_for_update()
+        )
+        customer = result.scalar_one_or_none()
         if not customer:
             return
         merged = {**customer.profile, **profile}

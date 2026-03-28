@@ -11,7 +11,8 @@ No SQL here.
 No LLM calls here.
 """
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dto.chat_dto import (
@@ -125,6 +126,36 @@ class ChatController:
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="An unexpected error occurred. Please try again.",
             )
+
+    async def send_message_stream(
+        self,
+        request: ChatRequest,
+        db: AsyncSession = Depends(get_db),
+    ) -> StreamingResponse:
+        """
+        Streaming chat endpoint using Server-Sent Events.
+        Streams tokens as they arrive from the LLM.
+        """
+        svc = _make_chat_service(db)
+
+        async def event_generator():
+            try:
+                async for event in svc.handle_stream(request):
+                    yield event
+            except Exception as exc:
+                import json
+                logger.error("stream.failed", error=str(exc))
+                yield f"data: {json.dumps({'type': 'error', 'content': 'An unexpected error occurred.'})}\n\n"
+
+        return StreamingResponse(
+            event_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
 
     async def get_history(
         self,

@@ -23,5 +23,11 @@ def _load(filename: str) -> dict:
         return json.load(f)
 
 
+@lru_cache(maxsize=1)
 def business_rules() -> dict:
     return _load("business_rules.json")
+
+
+@lru_cache(maxsize=1)
+def prompts() -> dict:
+    return _load("prompts.json")

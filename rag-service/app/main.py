@@ -56,6 +56,7 @@ app = FastAPI(
 )
 
 # ── CORS ──────────────────────────────────────────────────────────────────────
+# TODO: Restrict allow_origins to specific production domains instead of ["*"]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

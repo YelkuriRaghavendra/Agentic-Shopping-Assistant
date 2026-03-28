@@ -11,7 +11,7 @@
 
 import React from "react";
 import { render, cleanup } from "@testing-library/react";
-import { describe, it, afterEach } from "vitest";
+import { describe, it, afterEach, expect } from "vitest";
 import * as fc from "fast-check";
 import { SessionSidebar } from "@/components/SessionSidebar";
 import type { SessionResponse } from "@/types/chat.types";
@@ -29,7 +29,7 @@ const isoDateArb: fc.Arbitrary<string> = fc
   .map((ts) => new Date(ts).toISOString());
 
 const sessionArb: fc.Arbitrary<SessionResponse> = fc.record({
-  id: fc.uuid(),
+  session_id: fc.uuid(),
   customer_id: fc.option(fc.uuid(), { nil: null }),
   channel: fc.constantFrom("web", "mobile", "whatsapp", "sdk"),
   status: fc.constantFrom("active", "ended"),
@@ -64,6 +64,7 @@ describe("Property 12: SessionSidebar renders one entry per session", () => {
               activeSessionId={null}
               isLoading={false}
               onSelectSession={() => {}}
+              onNewSession={() => {}}
             />
           );
 

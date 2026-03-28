@@ -25,6 +25,7 @@ from tenacity import (
 import openai
 from openai import AsyncOpenAI, AsyncAzureOpenAI
 
+from app.config.loader import prompts
 from app.core.config import get_settings
 from app.core.exceptions import LLMError
 from app.core.logging import get_logger
@@ -232,10 +233,7 @@ class LLMClient:
             },
             {
                 "role": "user",
-                "content": (
-                    "Respond with valid JSON containing 'answer' and 'suggestions'. "
-                    "Cite products with [P1], [P2] markers in the answer."
-                ),
+                "content": prompts()["inline"]["generate_json_instruction"],
             },
         ]
 
@@ -299,8 +297,14 @@ class LLMClient:
     ) -> AsyncIterator[str]:
         """
         Streaming version of generate().
-        Yields text tokens as they arrive from the API.
-        Use with SSE endpoint for real-time chat feel.
+
+        LLM outputs JSON: {"answer": "...", "suggestions": [...]}
+        This method streams only the answer text to the caller.
+        After iteration completes, call .stream_suggestions on the
+        returned object to get parsed suggestions.
+
+        We use the same JSON instruction as generate() so the LLM
+        produces suggestions in a single call — zero extra cost.
         """
         messages = [
             {"role": "system", "content": system_prompt},
@@ -312,7 +316,7 @@ class LLMClient:
             },
             {
                 "role": "user",
-                "content": "Write a natural helpful response. Cite products with [P1], [P2] if applicable.",
+                "content": prompts()["inline"]["generate_json_instruction"],
             },
         ]
         stream = await self._call(
@@ -320,10 +324,97 @@ class LLMClient:
             model=_model(),
             stream=True,
         )
+
+        # LLM outputs: {"answer": "...", "suggestions": [...]}
+        # We stream ONLY the answer value content to the caller.
+        # After stream ends, parse_stream_suggestions() returns suggestions.
+        #
+        # State machine:
+        #   PREAMBLE  → accumulating {"answer": " prefix (not yielded)
+        #   ANSWER    → inside the answer string value (yielded to caller)
+        #   DONE      → past the closing quote (not yielded)
+
+        full_json = ""
+        state = "PREAMBLE"
+        escape_next = False
+        answer_start_idx = -1
+
         async for chunk in stream:
             delta = chunk.choices[0].delta if chunk.choices else None
-            if delta and delta.content:
-                yield delta.content
+            if not delta or not delta.content:
+                continue
+
+            full_json += delta.content
+
+            if state == "DONE":
+                continue
+
+            if state == "PREAMBLE":
+                # Look for the pattern "answer": " (with flexible whitespace)
+                import re as _re
+                m = _re.search(r'"answer"\s*:\s*"', full_json)
+                if not m:
+                    continue
+                answer_start_idx = m.end()
+                state = "ANSWER"
+                # Yield any answer content already accumulated after the quote
+                tail = full_json[answer_start_idx:]
+                to_yield = []
+                for ch in tail:
+                    if escape_next:
+                        escape_next = False
+                        to_yield.append(ch)
+                    elif ch == "\\":
+                        escape_next = True
+                        to_yield.append(ch)
+                    elif ch == '"':
+                        state = "DONE"
+                        break
+                    else:
+                        to_yield.append(ch)
+                if to_yield:
+                    yield "".join(to_yield)
+                continue
+
+            # state == "ANSWER" — process each character of delta.content
+            to_yield = []
+            for ch in delta.content:
+                if escape_next:
+                    escape_next = False
+                    to_yield.append(ch)
+                elif ch == "\\":
+                    escape_next = True
+                    to_yield.append(ch)
+                elif ch == '"':
+                    state = "DONE"
+                    break
+                else:
+                    to_yield.append(ch)
+            if to_yield:
+                yield "".join(to_yield)
+
+        # Store full JSON for suggestion parsing
+        self._last_stream_json = full_json
+
+    def parse_stream_suggestions(self) -> list[SuggestionItem]:
+        """Parse suggestions from the last generate_stream() call."""
+        raw = getattr(self, "_last_stream_json", "")
+        if not raw:
+            return []
+        try:
+            data = json.loads(raw)
+            raw_suggestions = data.get("suggestions", [])
+            return [
+                SuggestionItem(
+                    label=s.get("label", "")[:40],
+                    message=s.get("message", s.get("label", "")),
+                )
+                for s in raw_suggestions
+                if isinstance(s, dict) and s.get("label")
+            ][:4]
+        except (json.JSONDecodeError, AttributeError):
+            logger.debug("llm_client.stream_suggestions_parse_failed", raw=raw[:200])
+            return []
 
     async def summarise(self, transcript: str) -> str:
         """
@@ -334,11 +425,7 @@ class LLMClient:
             messages=[
                 {
                     "role": "system",
-                    "content": (
-                        "Summarise this customer service conversation in one paragraph "
-                        "(max 80 words). Cover: what they wanted, products discussed, "
-                        "decisions made, open issues. Past tense."
-                    ),
+                    "content": prompts()["inline"]["summarise"],
                 },
                 {"role": "user", "content": transcript},
             ],

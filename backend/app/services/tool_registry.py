@@ -12,11 +12,28 @@ Adding a new capability:
 That's it — no changes to chat_service.py needed.
 """
 
+import asyncio
 from dataclasses import dataclass
 from app.clients.rag_client import RAGClient, RetrievedChunk
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
+
+
+def _deduplicate_chunks(chunks: list[RetrievedChunk], top_k: int = 5) -> list[RetrievedChunk]:
+    """Remove duplicate products, keeping the highest-similarity chunk per product_id."""
+    seen: set[str] = set()
+    result: list[RetrievedChunk] = []
+    for chunk in chunks:
+        pid = chunk.product_id
+        if pid and pid in seen:
+            continue
+        if pid:
+            seen.add(pid)
+        result.append(chunk)
+        if len(result) >= top_k:
+            break
+    return result
 
 
 @dataclass
@@ -287,12 +304,18 @@ class ToolRegistry:
         if args.get("category"):
             filters["doc_type"] = "product"
         chunks = await self._rag.retrieve(query=query, filters=filters)
+        chunks = _deduplicate_chunks(chunks)
+        summary = (
+            f"Found {len(chunks)} products for: {query}"
+            if chunks
+            else f"No products found for: {query}. Tell the customer honestly that nothing matched their search."
+        )
         return ToolResult(
             tool_name="search_products",
             success=True,
             data={"query": query, "result_count": len(chunks)},
             retrieved_chunks=chunks,
-            summary=f"Found {len(chunks)} products for: {query}",
+            summary=summary,
         )
 
     async def _handle_outfit_pairing(self, args: dict) -> ToolResult:
@@ -307,6 +330,7 @@ class ToolRegistry:
         if args.get("budget"):
             filters["max_price"] = args["budget"]
         chunks = await self._rag.retrieve(query=result.search_query, filters=filters)
+        chunks = _deduplicate_chunks(chunks)
         return ToolResult(
             tool_name="outfit_pairing",
             success=True,
@@ -317,7 +341,11 @@ class ToolRegistry:
                 "recommended_colours": result.recommended_colours,
             },
             retrieved_chunks=chunks,
-            summary=f"{result.explanation} Found {len(chunks)} matching items.",
+            summary=(
+                f"{result.explanation} Found {len(chunks)} matching items."
+                if chunks
+                else f"{result.explanation} No products found. Tell the customer honestly that nothing matched."
+            ),
         )
 
     async def _handle_gift_finder(self, args: dict) -> ToolResult:
@@ -329,25 +357,40 @@ class ToolRegistry:
         if args.get("budget"):
             filters["max_price"] = args["budget"]
         chunks = await self._rag.retrieve(query=query, filters=filters)
+        chunks = _deduplicate_chunks(chunks)
         return ToolResult(
             tool_name="gift_finder",
             success=True,
             data={"recipient": recipient, "budget": args.get("budget")},
             retrieved_chunks=chunks,
-            summary=f"Gift ideas for {recipient}. Found {len(chunks)} options.",
+            summary=(
+                f"Gift ideas for {recipient}. Found {len(chunks)} options."
+                if chunks
+                else f"No gift options found for {recipient}. Tell the customer honestly that nothing matched."
+            ),
         )
 
     async def _handle_compare_products(self, args: dict) -> ToolResult:
         a = args.get("product_a", "")
         b = args.get("product_b", "")
-        chunks_a = await self._rag.retrieve(query=a, filters={"doc_type": "product"})
-        chunks_b = await self._rag.retrieve(query=b, filters={"doc_type": "product"})
+        chunks_a, chunks_b = await asyncio.gather(
+            self._rag.retrieve(query=a, filters={"doc_type": "product"}),
+            self._rag.retrieve(query=b, filters={"doc_type": "product"}),
+        )
+        chunks_a = _deduplicate_chunks(chunks_a, top_k=2)
+        chunks_b = _deduplicate_chunks(chunks_b, top_k=2)
+        all_chunks = chunks_a[:2] + chunks_b[:2]
+        summary = (
+            f"Comparing {a} vs {b}."
+            if all_chunks
+            else f"No products found for comparison of {a} vs {b}. Tell the customer honestly that neither product was found."
+        )
         return ToolResult(
             tool_name="compare_products",
             success=True,
             data={"product_a": a, "product_b": b},
-            retrieved_chunks=chunks_a[:2] + chunks_b[:2],
-            summary=f"Comparing {a} vs {b}.",
+            retrieved_chunks=all_chunks,
+            summary=summary,
         )
 
     async def _handle_size_advice(self, args: dict) -> ToolResult:
@@ -365,6 +408,7 @@ class ToolRegistry:
                 filters={"brand": args["brand"], "doc_type": "product"},
                 top_k=3,
             )
+            chunks = _deduplicate_chunks(chunks, top_k=3)
         return ToolResult(
             tool_name="size_advice",
             success=True,
@@ -404,6 +448,7 @@ class ToolRegistry:
             filters={"doc_type": "policy"},
             top_k=2,
         )
+        policy_chunks = _deduplicate_chunks(policy_chunks, top_k=2)
         return ToolResult(
             tool_name="return_request",
             success=True,
@@ -420,12 +465,17 @@ class ToolRegistry:
             filters={"doc_type": "policy"},
             top_k=3,
         )
+        chunks = _deduplicate_chunks(chunks, top_k=3)
         return ToolResult(
             tool_name="policy_faq",
             success=True,
             data={"topic": topic},
             retrieved_chunks=chunks,
-            summary=f"Policy FAQ for: {topic}. Found {len(chunks)} docs.",
+            summary=(
+                f"Policy FAQ for: {topic}. Found {len(chunks)} docs."
+                if chunks
+                else f"No policy documents found for: {topic}. Tell the customer honestly that no information was found."
+            ),
         )
 
     async def _handle_stock_check(self, args: dict) -> ToolResult:
@@ -440,12 +490,17 @@ class ToolRegistry:
             filters={"doc_type": "product", "in_stock": True},
             top_k=3,
         )
+        chunks = _deduplicate_chunks(chunks, top_k=3)
         return ToolResult(
             tool_name="stock_check",
             success=True,
             data={"product": name, "in_stock_count": len(chunks)},
             retrieved_chunks=chunks,
-            summary=f"Stock check for {name}. {len(chunks)} available.",
+            summary=(
+                f"Stock check for {name}. {len(chunks)} available."
+                if chunks
+                else f"No stock found for {name}. Tell the customer honestly that the item appears unavailable."
+            ),
         )
 
     async def _handle_escalate_to_human(self, args: dict) -> ToolResult:

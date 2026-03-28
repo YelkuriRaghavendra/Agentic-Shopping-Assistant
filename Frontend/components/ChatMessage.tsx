@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { motion } from "framer-motion";
 import { Bot, User } from "lucide-react";
 import { cn, formatTimestamp } from "@/lib/utils";
@@ -10,11 +11,13 @@ interface ChatMessageProps {
   message: ChatMessageUI;
 }
 
-export function ChatMessage({ message }: ChatMessageProps) {
+export const ChatMessage = memo(function ChatMessage({ message }: ChatMessageProps) {
   const isUser = message.role === "user";
 
   return (
     <motion.div
+      role="article"
+      aria-label={isUser ? "Your message" : "Assistant message"}
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3, ease: "easeOut" }}
@@ -69,4 +72,4 @@ export function ChatMessage({ message }: ChatMessageProps) {
       </div>
     </motion.div>
   );
-}
+});

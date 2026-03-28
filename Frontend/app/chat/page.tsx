@@ -90,6 +90,7 @@ export default function ChatPage() {
           messages={chat.messages}
           sendMessage={chat.sendMessage}
           sendProductMessage={chat.sendProductMessage}
+          sendCompareMessage={chat.sendCompareMessage}
           isLoading={chat.isLoading}
           isTyping={chat.isTyping}
           inputDisabled={customer.isLoading}

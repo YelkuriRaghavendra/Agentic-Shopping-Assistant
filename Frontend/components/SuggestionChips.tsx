@@ -21,9 +21,9 @@ export function SuggestionChips({ suggestions, onSelectSuggestion }: SuggestionC
 
   return (
     <div className="flex flex-wrap gap-2 mt-1">
-      {suggestions.map((chip, i) => (
+      {suggestions.map((chip) => (
         <button
-          key={i}
+          key={chip.label + chip.message}
           onClick={() => handleClick(chip)}
           style={chipStyle}
           onMouseEnter={(e) => Object.assign((e.currentTarget as HTMLButtonElement).style, chipHoverStyle)}

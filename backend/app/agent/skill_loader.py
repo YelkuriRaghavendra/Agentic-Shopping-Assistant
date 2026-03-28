@@ -16,6 +16,7 @@ Changes to SKILL.md files take effect on next process restart.
 
 from __future__ import annotations
 
+from functools import lru_cache
 from pathlib import Path
 from app.core.logging import get_logger
 
@@ -23,6 +24,12 @@ logger = get_logger(__name__)
 
 # Root of the agent directory
 _AGENT_ROOT = Path(__file__).parent
+
+
+@lru_cache(maxsize=None)
+def _read_file(path: str) -> str:
+    """Read a file from disk; result is cached by absolute path."""
+    return Path(path).read_text(encoding="utf-8")
 
 
 class SkillLoader:
@@ -120,6 +127,7 @@ class SkillLoader:
     def clear_cache(self) -> None:
         """Force reload of all files on next access. Useful in development."""
         self._cache.clear()
+        _read_file.cache_clear()
         logger.info("skill_loader.cache_cleared")
 
     def _read(self, path: Path, label: str) -> str:
@@ -128,7 +136,7 @@ class SkillLoader:
                 f"Skill file not found: {path}. "
                 f"Create {path} to define the '{label}' skill."
             )
-        content = path.read_text(encoding="utf-8")
+        content = _read_file(str(path.resolve()))
         logger.debug("skill_loader.loaded", path=str(path), size=len(content))
         return content
 

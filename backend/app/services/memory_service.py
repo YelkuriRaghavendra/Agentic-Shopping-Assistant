@@ -17,7 +17,9 @@ from datetime import datetime, UTC
 from typing import Any
 
 from app.api.dto.chat_dto import ProductCardDTO
+from app.clients.redis_client import cache_get, cache_set, cache_delete
 from app.config.loader import business_rules
+from app.core.config import get_settings
 from app.db.repositories import SessionRepository, CustomerRepository
 from app.db.models.session import Session
 from app.core.logging import get_logger
@@ -212,8 +214,22 @@ class MemoryService:
     async def load_customer_profile(self, customer_id: uuid.UUID | None) -> dict:
         if not customer_id:
             return {}
+
+        # Check Redis cache first
+        cache_key = f"profile:{customer_id}"
+        cached = await cache_get(cache_key)
+        if cached is not None:
+            return cached
+
         customer = await self._customer_repo.get_by_id(customer_id)
-        return customer.profile if customer else {}
+        profile = customer.profile if customer else {}
+
+        # Cache for fast subsequent lookups
+        if profile:
+            settings = get_settings()
+            await cache_set(cache_key, profile, ttl=settings.CACHE_PROFILE_TTL)
+
+        return profile
 
     def prefill_slots_from_profile(self, slots: SlotState, profile: dict) -> SlotState:
         """Pre-fill slots for returning customers."""
@@ -299,8 +315,12 @@ class MemoryService:
             profile["known_people"] = existing[-10:]
 
         profile["interaction_count"] = profile.get("interaction_count", 0) + 1
+        profile["total_sessions"]    = profile.get("total_sessions", 0) + 1
         profile["last_seen"]         = datetime.now(UTC).isoformat()
         await self._customer_repo.update_profile(customer_id, profile)
+
+        # Invalidate cached profile so next load gets fresh data
+        await cache_delete(f"profile:{customer_id}")
 
     # ── People context (Bug 1 fix) ────────────────────────────────────────
 

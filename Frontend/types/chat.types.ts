@@ -111,4 +111,5 @@ export interface ChatMessageUI {
   timestamp: Date;
   citedProducts?: ProductCardDTO[];
   suggestions?: SuggestionChip[];
+  streamDone?: boolean;
 }

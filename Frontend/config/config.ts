@@ -5,6 +5,7 @@ export const API_PREFIX = "/api/v1";
 
 export const endpoints = {
   chat:             `${apiBaseUrl}${API_PREFIX}/chat`,
+  chatStream:       `${apiBaseUrl}${API_PREFIX}/chat/stream`,
   createCustomer:   `${apiBaseUrl}${API_PREFIX}/chat/customers`,
   getCustomer:      (id: string) => `${apiBaseUrl}${API_PREFIX}/chat/customers/${id}`,
   customerSessions: (id: string) => `${apiBaseUrl}${API_PREFIX}/chat/customers/${id}/sessions`,
