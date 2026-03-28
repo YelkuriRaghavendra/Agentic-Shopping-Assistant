@@ -17,28 +17,28 @@ import { OrderStatusHistory } from './order-status-history.entity'
 
 @Entity({ schema: 'orders', name: 'orders' })
 export class Order {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryGeneratedColumn('uuid', { name: 'order_id' })
   orderId: string
 
-  @Column({ type: 'uuid' })
+  @Column({ name: 'customer_id', type: 'uuid' })
   customerId: string
 
-  @Column({ type: 'uuid', nullable: true })
+  @Column({ name: 'checkout_id', type: 'uuid', nullable: true })
   checkoutId: string | null
 
-  @Column()
+  @Column({ name: 'merchant_id' })
   merchantId: string
 
-  @Column({ nullable: true })
+  @Column({ name: 'ucp_order_id', nullable: true })
   ucpOrderId: string | null
 
-  @Column({ type: 'text', nullable: true })
+  @Column({ name: 'permalink_url', type: 'text', nullable: true })
   permalinkUrl: string | null
 
   @Column({ default: UcpOrderStatus.PROCESSING })
   status: UcpOrderStatus
 
-  @Column({ type: 'jsonb', default: '[]' })
+  @Column({ name: 'line_items', type: 'jsonb', default: '[]' })
   lineItems: UcpOrderLineItem[]
 
   @Column({ type: 'jsonb', default: '{}' })
@@ -50,10 +50,10 @@ export class Order {
   @Column({ type: 'jsonb', default: '{}' })
   totals: UcpTotals
 
-  @CreateDateColumn({ type: 'timestamptz' })
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date
 
-  @UpdateDateColumn({ type: 'timestamptz' })
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt: Date
 
   @OneToMany(() => OrderStatusHistory, (history) => history.order, { cascade: true })

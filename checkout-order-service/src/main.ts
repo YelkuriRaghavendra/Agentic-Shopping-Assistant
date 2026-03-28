@@ -17,10 +17,9 @@ async function bootstrap() {
     }),
   );
 
-  // Global prefix for commerce routes — excludes /.well-known/ucp (platform profile)
-  app.setGlobalPrefix('commerce', {
-    exclude: ['.well-known/ucp'],
-  });
+  // Controllers already include 'commerce' in their @Controller() paths,
+  // so no global prefix is set here to avoid doubling up.
+  // The /.well-known/ucp route uses @Controller() with no prefix.
 
   const port = process.env.PORT ?? 3001;
   await app.listen(port);

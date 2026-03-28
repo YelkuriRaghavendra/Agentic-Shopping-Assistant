@@ -24,7 +24,7 @@ from app.core.logging import get_logger
 logger = get_logger(__name__)
 
 _COMMERCE_SERVICE_URL = os.environ.get(
-    "COMMERCE_SERVICE_URL", "http://checkout-order-service:3001"
+    "COMMERCE_SERVICE_URL", "http://localhost:3001"
 )
 _COMMERCE_TIMEOUT = float(os.environ.get("COMMERCE_TIMEOUT_SECONDS", "15"))
 
@@ -163,7 +163,7 @@ class CommerceClient(BaseHTTPClient):
         """
         return await self._commerce_get(
             f"/commerce/orders/{order_id}",
-            params={"customer_id": customer_id},
+            params={"customerId": customer_id},
             request_id=request_id,
         )
 
@@ -178,7 +178,7 @@ class CommerceClient(BaseHTTPClient):
         GET /commerce/orders
         Paginated order history for a customer.
         """
-        params: dict[str, Any] = {"customer_id": customer_id, "limit": limit}
+        params: dict[str, Any] = {"customerId": customer_id, "limit": limit}
         if cursor:
             params["cursor"] = cursor
         return await self._commerce_get(
@@ -196,7 +196,7 @@ class CommerceClient(BaseHTTPClient):
         POST /commerce/orders/:id/cancel
         Submits a cancellation request.
         """
-        payload: dict[str, Any] = {"customer_id": customer_id}
+        payload: dict[str, Any] = {"customerId": customer_id}
         if reason:
             payload["reason"] = reason
         return await self._commerce_post(
@@ -214,7 +214,7 @@ class CommerceClient(BaseHTTPClient):
         POST /commerce/orders/:id/return
         Submits a return request.
         """
-        payload: dict[str, Any] = {"customer_id": customer_id}
+        payload: dict[str, Any] = {"customerId": customer_id}
         if reason:
             payload["reason"] = reason
         return await self._commerce_post(

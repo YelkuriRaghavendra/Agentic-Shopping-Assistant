@@ -67,9 +67,9 @@ export class ContextDto {
 }
 
 export class CreateCheckoutSessionDto {
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  merchant_id: string;
+  merchant_id?: string;
 
   @IsString()
   @IsNotEmpty()

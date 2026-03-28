@@ -79,12 +79,14 @@ class Settings(BaseSettings):
     CACHE_PROFILE_TTL: int = 300   # 5 minutes
 
     # ── Commerce Service ──────────────────────────────
-    COMMERCE_SERVICE_URL: str = "http://checkout-order-service:3001"
+    COMMERCE_SERVICE_URL: str = "http://localhost:3001"
     COMMERCE_SERVICE_API_KEY: str = ""
     COMMERCE_TIMEOUT_SECONDS: int = 15
 
     # ── Feature Flags (LaunchDarkly) ──────────────────
     LAUNCHDARKLY_SDK_KEY: str = ""
+    # Set to True in local dev to bypass LaunchDarkly and enable all commerce intents
+    FEATURE_FLAG_FORCE_ENABLE: bool = False
 
     # ── Logging ───────────────────────────────────────
     LOG_LEVEL: str = "INFO"

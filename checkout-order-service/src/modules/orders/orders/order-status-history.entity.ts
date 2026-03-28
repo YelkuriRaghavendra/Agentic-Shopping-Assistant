@@ -9,16 +9,16 @@ import { Order } from './order.entity'
 
 @Entity({ schema: 'orders', name: 'order_status_history' })
 export class OrderStatusHistory {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryGeneratedColumn('uuid', { name: 'history_id' })
   historyId: string
 
-  @Column({ type: 'uuid' })
+  @Column({ name: 'order_id', type: 'uuid' })
   orderId: string
 
-  @Column({ type: 'varchar', nullable: true })
+  @Column({ name: 'from_status', type: 'varchar', nullable: true })
   fromStatus: string | null
 
-  @Column({ type: 'varchar' })
+  @Column({ name: 'to_status', type: 'varchar' })
   toStatus: string
 
   @Column({ type: 'varchar' })
@@ -30,7 +30,7 @@ export class OrderStatusHistory {
   @Column({ type: 'text', nullable: true })
   note: string | null
 
-  @CreateDateColumn({ type: 'timestamptz' })
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date
 
   @ManyToOne(() => Order, (order) => order.statusHistory, { onDelete: 'CASCADE' })

@@ -37,8 +37,10 @@ export class CheckoutController {
   /** POST /commerce/checkout/sessions — create a new checkout session */
   @Post()
   async createSession(@Body() dto: CreateCheckoutSessionDto): Promise<CheckoutSession> {
+    // Use configured default merchant if none provided (local dev / single-merchant setup)
+    const merchantId = dto.merchant_id ?? process.env.DEFAULT_MERCHANT_ID ?? 'default-merchant';
     return this.checkoutSessionService.createSession(
-      dto.merchant_id,
+      merchantId,
       dto.customer_id,
       dto.line_items,
       dto.buyer,

@@ -1,9 +1,15 @@
 import { IsNotEmpty, IsOptional, IsString, IsInt, Min, Max } from 'class-validator'
-import { Type } from 'class-transformer'
+import { Type, Transform } from 'class-transformer'
 
 export class OrderQueryDto {
+  // Accept both camelCase (customerId) and snake_case (customer_id) from Python clients
+  @IsOptional()
+  @IsString()
+  customer_id?: string
+
   @IsString()
   @IsNotEmpty()
+  @Transform(({ obj }) => obj.customerId ?? obj.customer_id)
   customerId: string
 
   @IsOptional()

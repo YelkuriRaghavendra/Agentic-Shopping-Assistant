@@ -85,13 +85,19 @@ HISTORY_TOKEN_BUDGET = 800
 
 # Keyword → commerce intent mapping (evaluated before LLM tool-calling)
 _COMMERCE_INTENT_MAP: list[tuple[list[str], str]] = [
-    (["checkout", "check out", "place order", "place my order", "buy now", "proceed to checkout"], "checkout_initiate"),
-    (["add to cart", "add to my cart", "put in cart", "put it in", "add it", "add this"], "add_to_cart"),
+    (["checkout", "check out", "place order", "place my order", "buy now", "proceed to checkout",
+      "place the order", "i want to buy", "i'd like to buy", "i would like to buy",
+      "purchase this", "purchase it", "buy this", "buy it", "complete my purchase",
+      "complete the purchase", "complete purchase", "finalize", "finalise"], "checkout_initiate"),
+    (["add to cart", "add to my cart", "put in cart", "put it in", "add it", "add this",
+      "i want to add", "add the"], "add_to_cart"),
     (["remove from cart", "take out of cart", "delete from cart", "remove it", "take it out"], "remove_from_cart"),
     (["view cart", "show cart", "what's in my cart", "my cart", "see my cart", "show my cart"], "view_cart"),
-    (["order status", "where is my order", "track my order", "order #", "order number"], "order_status"),
-    (["order history", "my orders", "past orders", "previous orders", "all orders", "show my orders"], "order_history"),
-    (["cancel order", "cancel my order", "cancel purchase"], "cancel_order"),
+    (["order status", "where is my order", "track my order", "order #", "order number",
+      "status of my order", "where's my order"], "order_status"),
+    (["order history", "my orders", "past orders", "previous orders", "all orders",
+      "show my orders", "show orders", "see my orders"], "order_history"),
+    (["cancel order", "cancel my order", "cancel purchase", "cancel the order"], "cancel_order"),
 ]
 
 # Required slots per commerce intent
@@ -99,7 +105,7 @@ _REQUIRED_SLOTS: dict[str, list[str]] = {
     "add_to_cart":       ["product_id", "quantity"],
     "remove_from_cart":  ["product_id"],
     "view_cart":         [],
-    "checkout_initiate": ["line_items"],
+    "checkout_initiate": [],   # line_items built from cart or RAG-resolved product
     "order_status":      ["order_id"],
     "order_history":     [],
     "cancel_order":      ["order_id"],
@@ -1071,11 +1077,22 @@ class ChatService:
                     slots["_resolved_product_name"] = chunks[0].content[:80]
 
         # For checkout_initiate, line_items come from the session context (cart)
+        # OR from a product resolved via RAG in this same message
         if intent == "checkout_initiate":
             cart = session.context.get("cart", {})
             line_items = cart.get("line_items", [])
             if line_items:
                 slots["line_items"] = line_items
+            elif slots.get("product_id"):
+                # Build line_items from the product resolved in this message
+                slots["line_items"] = [{
+                    "item": {
+                        "id": slots["product_id"],
+                        "title": slots.get("_resolved_product_name", slots["product_id"]),
+                        "price": 1,  # placeholder — real price from merchant UCP endpoint
+                    },
+                    "quantity": slots.get("quantity", 1),
+                }]
 
         # Extract buyer info (name, email)
         email_match = re.search(r'[\w.+-]+@[\w-]+\.[a-zA-Z]{2,}', message)
@@ -1096,7 +1113,11 @@ class ChatService:
 
         if intent == "add_to_cart":
             line_item = {
-                "item": {"id": slots["product_id"], "title": slots.get("_resolved_product_name", slots["product_id"])},
+                "item": {
+                    "id": slots["product_id"],
+                    "title": slots.get("_resolved_product_name", slots["product_id"]),
+                    "price": 1,  # placeholder — real price comes from merchant UCP endpoint
+                },
                 "quantity": slots.get("quantity", 1),
             }
             return await self._commerce.create_checkout_session(

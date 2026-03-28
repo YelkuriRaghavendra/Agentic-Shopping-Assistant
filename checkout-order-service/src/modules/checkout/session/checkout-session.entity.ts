@@ -15,51 +15,51 @@ import type {
 
 @Entity({ schema: 'checkout', name: 'checkout_sessions' })
 export class CheckoutSession {
-  @PrimaryGeneratedColumn('uuid')
+  @PrimaryGeneratedColumn('uuid', { name: 'session_id' })
   sessionId: string;
 
-  @Column({ type: 'uuid' })
+  @Column({ name: 'customer_id', type: 'uuid' })
   customerId: string;
 
-  @Column()
+  @Column({ name: 'merchant_id' })
   merchantId: string;
 
-  @Column({ nullable: true })
+  @Column({ name: 'ucp_checkout_id', nullable: true })
   ucpCheckoutId: string | null;
 
-  @Column({ default: UcpCheckoutStatus.INCOMPLETE })
+  @Column({ name: 'ucp_status', default: UcpCheckoutStatus.INCOMPLETE })
   ucpStatus: UcpCheckoutStatus;
 
-  @Column({ type: 'text', nullable: true })
+  @Column({ name: 'continue_url', type: 'text', nullable: true })
   continueUrl: string | null;
 
-  @Column({ type: 'timestamptz', nullable: true })
+  @Column({ name: 'expires_at', type: 'timestamptz', nullable: true })
   expiresAt: Date | null;
 
-  @Column({ type: 'jsonb', default: '[]' })
+  @Column({ name: 'line_items_snapshot', type: 'jsonb', default: '[]' })
   lineItemsSnapshot: UcpLineItem[];
 
-  @Column({ type: 'jsonb', nullable: true })
+  @Column({ name: 'buyer_snapshot', type: 'jsonb', nullable: true })
   buyerSnapshot: UcpBuyer | null;
 
-  @Column({ type: 'jsonb', nullable: true })
+  @Column({ name: 'context_snapshot', type: 'jsonb', nullable: true })
   contextSnapshot: UcpContext | null;
 
-  @Column({ type: 'jsonb', nullable: true })
+  @Column({ name: 'payment_handlers', type: 'jsonb', nullable: true })
   paymentHandlers: unknown | null;
 
-  @Column({ type: 'jsonb', nullable: true })
+  @Column({ name: 'totals_snapshot', type: 'jsonb', nullable: true })
   totalsSnapshot: UcpTotals | null;
 
-  @Column({ nullable: true })
+  @Column({ name: 'ucp_order_id', nullable: true })
   ucpOrderId: string | null;
 
-  @Column({ type: 'text', nullable: true })
+  @Column({ name: 'ucp_order_permalink', type: 'text', nullable: true })
   ucpOrderPermalink: string | null;
 
-  @CreateDateColumn({ type: 'timestamptz' })
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 
-  @UpdateDateColumn({ type: 'timestamptz' })
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt: Date;
 }

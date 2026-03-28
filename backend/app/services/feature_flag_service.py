@@ -107,6 +107,10 @@ class FeatureFlagService:
         Both must be enabled for the intent to be routed.
         Returns False if LaunchDarkly is unreachable.
         """
+        # Local dev override — set FEATURE_FLAG_FORCE_ENABLE=true to bypass LaunchDarkly
+        from app.core.config import get_settings
+        if get_settings().FEATURE_FLAG_FORCE_ENABLE:
+            return True
         if not self.is_commerce_enabled(customer_id):
             return False
         flag_key = _INTENT_FLAG_MAP.get(intent, f"commerce.{intent}")
