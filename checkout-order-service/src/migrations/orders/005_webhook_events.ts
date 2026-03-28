@@ -1,7 +1,7 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class CreateWebhookEvents1000000014 implements MigrationInterface {
-  name = 'CreateWebhookEvents1000000014';
+export class CreateWebhookEvents1700000000014 implements MigrationInterface {
+  name = 'CreateWebhookEvents1700000000014';
 
   async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`

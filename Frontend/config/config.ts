@@ -1,6 +1,9 @@
 const apiBaseUrl =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
+const commerceBaseUrl =
+  process.env.NEXT_PUBLIC_COMMERCE_BASE_URL ?? "http://localhost:3001";
+
 export const API_PREFIX = "/api/v1";
 
 export const endpoints = {
@@ -14,6 +17,7 @@ export const endpoints = {
   endSession:       (id: string) => `${apiBaseUrl}${API_PREFIX}/chat/sessions/${id}/end`,
   sessionMessages:  (id: string) => `${apiBaseUrl}${API_PREFIX}/chat/sessions/${id}/messages`,
   messageFeedback:  (id: string) => `${apiBaseUrl}${API_PREFIX}/chat/messages/${id}/feedback`,
+  orderDetail:      (id: string) => `${commerceBaseUrl}/commerce/orders/${id}`,
 } as const;
 
 export { apiBaseUrl };

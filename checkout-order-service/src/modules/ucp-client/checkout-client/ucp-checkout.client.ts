@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'crypto';
 import { MerchantProfileService } from '../merchant-profile/merchant-profile.service';
 import { RequestSigningService } from '../signing/request-signing.service';
 import { IdempotencyService } from '../idempotency/idempotency.service';
@@ -183,7 +183,7 @@ export class UcpCheckoutClient {
     url: string,
     body: unknown,
   ): Promise<T> {
-    const requestId = uuidv4();
+    const requestId = randomUUID();
     const bodyBuffer = body !== undefined ? Buffer.from(JSON.stringify(body)) : Buffer.alloc(0);
 
     const signature = await this.signingService.signRequest(bodyBuffer);

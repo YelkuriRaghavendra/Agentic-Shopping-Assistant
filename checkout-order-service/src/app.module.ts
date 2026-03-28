@@ -3,10 +3,12 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bull';
 import { TerminusModule } from '@nestjs/terminus';
-import { RedisProvider } from './redis.provider';
+import { RedisModule } from './redis.provider';
 import { HealthController } from './health/health.controller';
 import { HealthService } from './health/health.service';
-import { UcpGatewayModule } from './modules/ucp-gateway/ucp-gateway.module';
+import { UcpClientModule } from './modules/ucp-client/ucp-client.module';
+import { CheckoutModule } from './modules/checkout/checkout.module';
+import { OrdersModule } from './modules/orders/orders.module';
 
 @Module({
   imports: [
@@ -52,10 +54,13 @@ import { UcpGatewayModule } from './modules/ucp-gateway/ucp-gateway.module';
     ),
 
     TerminusModule,
-    UcpGatewayModule,
+    RedisModule,
+    UcpClientModule,
+    CheckoutModule,
+    OrdersModule,
   ],
   controllers: [HealthController],
-  providers: [RedisProvider, HealthService],
-  exports: [RedisProvider],
+  providers: [HealthService],
+  exports: [],
 })
 export class AppModule {}

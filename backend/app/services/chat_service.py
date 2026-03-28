@@ -12,15 +12,16 @@ Flow:
   5.  Input guardrails
   6.  Classify intent
   7.  Extract + update slots
-  8.  LLM decides which tool to call
-  9.  Execute tool (RAG, order lookup, policy, etc.)
-  10. Build prompt (all memory layers injected)
-  11. Generate LLM response
-  12. Output guardrails
-  13. Citation processing
-  14. Persist messages + update memory
-  15. Trigger background tasks (profile update, summarisation)
-  16. Return structured response
+  8.  Commerce intent routing (feature-flag gated)
+  9.  LLM decides which tool to call
+  10. Execute tool (RAG, order lookup, policy, etc.)
+  11. Build prompt (all memory layers injected)
+  12. Generate LLM response
+  13. Output guardrails
+  14. Citation processing
+  15. Persist messages + update memory
+  16. Trigger background tasks (profile update, summarisation)
+  17. Return structured response
 
 This service knows nothing about HTTP — no FastAPI, no Request, no Response.
 """
@@ -37,6 +38,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.dto.chat_dto import ChatRequest, ChatResponse, ProductCardDTO
 from app.clients.llm_client import LLMClient, ToolCall, SuggestionItem
 from app.clients.rag_client import RAGClient
+from app.clients.commerce_client import CommerceClient
 from app.config.loader import business_rules, prompts
 from app.core.config import get_settings
 from app.core.exceptions import (
@@ -55,6 +57,7 @@ from app.db.repositories import (
     MessageRepository,
 )
 from app.services.citation_service import CitationService
+from app.services.feature_flag_service import FeatureFlagService, COMMERCE_INTENTS
 from app.services.guardrails_service import GuardrailsService
 from app.services.memory_service import MemoryService, SlotState, ConversationHistory, PersonNote
 from app.services.prompt_builder_service import PromptBuilderService
@@ -76,6 +79,54 @@ HISTORY_TOKEN_BUDGET = 800
 # Tool selection prompt lives in app/services/skills/prompts.py → TOOL_SELECTION_PROMPT
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Commerce intent classification
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Keyword → commerce intent mapping (evaluated before LLM tool-calling)
+_COMMERCE_INTENT_MAP: list[tuple[list[str], str]] = [
+    (["checkout", "check out", "place order", "place my order", "buy now", "proceed to checkout"], "checkout_initiate"),
+    (["add to cart", "add to my cart", "put in cart", "put it in", "add it", "add this"], "add_to_cart"),
+    (["remove from cart", "take out of cart", "delete from cart", "remove it", "take it out"], "remove_from_cart"),
+    (["view cart", "show cart", "what's in my cart", "my cart", "see my cart", "show my cart"], "view_cart"),
+    (["order status", "where is my order", "track my order", "order #", "order number"], "order_status"),
+    (["order history", "my orders", "past orders", "previous orders", "all orders", "show my orders"], "order_history"),
+    (["cancel order", "cancel my order", "cancel purchase"], "cancel_order"),
+]
+
+# Required slots per commerce intent
+_REQUIRED_SLOTS: dict[str, list[str]] = {
+    "add_to_cart":       ["product_id", "quantity"],
+    "remove_from_cart":  ["product_id"],
+    "view_cart":         [],
+    "checkout_initiate": ["line_items"],
+    "order_status":      ["order_id"],
+    "order_history":     [],
+    "cancel_order":      ["order_id"],
+}
+
+# Re-prompt questions for missing slots
+_SLOT_PROMPTS: dict[str, str] = {
+    "product_id":  "Which product would you like? Could you describe it or give me the product name?",
+    "quantity":    "How many would you like to add?",
+    "order_id":    "Could you share your order number? You can find it in your confirmation email.",
+    "line_items":  "Your cart appears to be empty. Would you like to add some items first?",
+}
+
+
+def _classify_commerce_intent(message: str) -> str | None:
+    """
+    Keyword-based commerce intent classifier.
+    Returns a commerce intent name or None if no match.
+    Zero LLM cost.
+    """
+    msg = message.lower()
+    for keywords, intent in _COMMERCE_INTENT_MAP:
+        if any(kw in msg for kw in keywords):
+            return intent
+    return None
+
+
 class ChatService:
     """
     All dependencies are injected — makes testing easy.
@@ -94,6 +145,8 @@ class ChatService:
         citations:     CitationService,
         tools:         ToolRegistry,
         skills:        SkillRegistry,
+        commerce:      CommerceClient | None = None,
+        feature_flags: FeatureFlagService | None = None,
     ):
         self._db           = db
         self._llm          = llm_client
@@ -105,6 +158,8 @@ class ChatService:
         self._citations    = citations
         self._tools        = tools
         self._skills       = skills
+        self._commerce     = commerce or CommerceClient()
+        self._flags        = feature_flags or FeatureFlagService()
 
         self._session_repo  = SessionRepository(db)
         self._customer_repo = CustomerRepository(db)
@@ -154,6 +209,21 @@ class ChatService:
         # Extract people mentions — stored in profile for cross-session memory
         # "my friend who runs" in session 1 → remembered in session 2
         people = self._memory.extract_people_from_message(request.message)
+
+        # ── 7b. Commerce intent routing (feature-flag gated) ─────────────
+        commerce_intent = _classify_commerce_intent(request.message)
+        if commerce_intent:
+            commerce_response = await self._handle_commerce_intent(
+                commerce_intent=commerce_intent,
+                message=request.message,
+                session=session,
+                request=request,
+                slots=slots,
+                t_start=t_start,
+            )
+            if commerce_response is not None:
+                return commerce_response
+            # If None, fall through to normal LLM flow (e.g. flag disabled)
 
         # ── 8. Resolve active skills ─────────────────────────────────────
         skill_ctx = SkillContext(
@@ -860,6 +930,349 @@ class ChatService:
                 _bg_update_profile(customer_id, slots, cited_products, intent, people or [])
             )
         asyncio.create_task(_bg_summarise(session_id))
+
+    # ── Instant response builders ─────────────────────────────────────────
+
+    async def _handle_commerce_intent(
+        self,
+        commerce_intent: str,
+        message: str,
+        session: Session,
+        request: ChatRequest,
+        slots: SlotState,
+        t_start: float,
+    ) -> ChatResponse | None:
+        """
+        Route a commerce intent through feature flags → slot validation → CommerceClient.
+
+        Returns:
+          - ChatResponse if the intent was handled (flag disabled, slot missing, or service called)
+          - None if the intent should fall through to the normal LLM flow
+        """
+        customer_id_str = str(session.customer_id) if session.customer_id else None
+
+        # ── Feature flag check ────────────────────────────────────────────
+        if not self._flags.is_intent_enabled(commerce_intent, customer_id_str):
+            logger.info(
+                "chat.commerce_intent_disabled",
+                intent=commerce_intent,
+                session_id=str(session.session_id),
+            )
+            msg = (
+                "This feature is currently unavailable. "
+                "Our team is working on it — please check back soon!"
+            )
+            return await self._direct_response(session, request, msg, commerce_intent, t_start)
+
+        # ── Resolve ambiguous product references via RAG ──────────────────
+        commerce_slots = await self._extract_commerce_slots(
+            message=message,
+            intent=commerce_intent,
+            session=session,
+        )
+
+        # ── Slot validation — re-prompt for missing required slots ────────
+        required = _REQUIRED_SLOTS.get(commerce_intent, [])
+        for slot_name in required:
+            if not commerce_slots.get(slot_name):
+                prompt_question = _SLOT_PROMPTS.get(
+                    slot_name,
+                    f"Could you provide the {slot_name.replace('_', ' ')}?",
+                )
+                logger.info(
+                    "chat.commerce_slot_missing",
+                    intent=commerce_intent,
+                    missing_slot=slot_name,
+                )
+                return await self._question_response(
+                    session, request, prompt_question, commerce_intent, t_start
+                )
+
+        # ── Call commerce service ─────────────────────────────────────────
+        try:
+            service_response = await self._dispatch_commerce_intent(
+                intent=commerce_intent,
+                slots=commerce_slots,
+                customer_id=customer_id_str or "",
+                request_id=str(session.session_id),
+            )
+        except Exception as exc:
+            logger.warning(
+                "chat.commerce_dispatch_failed",
+                intent=commerce_intent,
+                error=str(exc),
+            )
+            return await self._error_response(session, request, t_start)
+
+        # ── Format response ───────────────────────────────────────────────
+        answer = self._format_commerce_response(commerce_intent, service_response)
+        return await self._direct_response(session, request, answer, commerce_intent, t_start)
+
+    async def _extract_commerce_slots(
+        self,
+        message: str,
+        intent: str,
+        session: Session,
+    ) -> dict:
+        """
+        Extract commerce-specific slots from the message.
+        Resolves ambiguous product references ("the blue one") via RAG.
+        """
+        import re
+        slots: dict = {}
+        msg = message.lower()
+
+        # Extract order_id — matches patterns like #12345, order 12345, ORD-12345
+        order_id_match = re.search(
+            r'(?:order\s*#?\s*|#\s*)([A-Za-z0-9_-]{4,})', message, re.IGNORECASE
+        )
+        if order_id_match:
+            slots["order_id"] = order_id_match.group(1)
+
+        # Extract quantity — "2 pairs", "3 items", "one", etc.
+        qty_match = re.search(
+            r'\b(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\b', msg
+        )
+        if qty_match:
+            word_to_num = {
+                "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+                "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+            }
+            raw = qty_match.group(1)
+            slots["quantity"] = word_to_num.get(raw, int(raw) if raw.isdigit() else 1)
+
+        # Resolve product reference via RAG if needed
+        if intent in ("add_to_cart", "remove_from_cart") and "product_id" not in slots:
+            # Check for ambiguous references ("the blue one", "that item", "it")
+            ambiguous_patterns = [
+                r'\bthe\s+\w+\s+one\b',
+                r'\bthat\s+(item|product|one|thing)\b',
+                r'\bthis\s+(item|product|one|thing)\b',
+                r'\bit\b',
+            ]
+            is_ambiguous = any(re.search(p, msg) for p in ambiguous_patterns)
+
+            # Try to extract explicit product name/id first
+            product_match = re.search(
+                r'(?:product\s+(?:id\s+)?|item\s+(?:id\s+)?)([A-Za-z0-9_-]+)', message, re.IGNORECASE
+            )
+            if product_match:
+                slots["product_id"] = product_match.group(1)
+            elif is_ambiguous or intent == "add_to_cart":
+                # Resolve via RAG — use the message as the search query
+                chunks = await self._rag.retrieve(
+                    query=message,
+                    filters={"doc_type": "product"},
+                    top_k=1,
+                    request_id=None,
+                )
+                if chunks:
+                    slots["product_id"] = chunks[0].product_id
+                    slots["_resolved_product_name"] = chunks[0].content[:80]
+
+        # For checkout_initiate, line_items come from the session context (cart)
+        if intent == "checkout_initiate":
+            cart = session.context.get("cart", {})
+            line_items = cart.get("line_items", [])
+            if line_items:
+                slots["line_items"] = line_items
+
+        # Extract buyer info (name, email)
+        email_match = re.search(r'[\w.+-]+@[\w-]+\.[a-zA-Z]{2,}', message)
+        if email_match:
+            slots["buyer_email"] = email_match.group(0)
+
+        return slots
+
+    async def _dispatch_commerce_intent(
+        self,
+        intent: str,
+        slots: dict,
+        customer_id: str,
+        request_id: str,
+    ):
+        """Route a validated commerce intent to the CommerceClient."""
+        from app.clients.commerce_client import CommerceResponse
+
+        if intent == "add_to_cart":
+            line_item = {
+                "item": {"id": slots["product_id"], "title": slots.get("_resolved_product_name", slots["product_id"])},
+                "quantity": slots.get("quantity", 1),
+            }
+            return await self._commerce.create_checkout_session(
+                customer_id=customer_id,
+                line_items=[line_item],
+                request_id=request_id,
+            )
+
+        elif intent == "remove_from_cart":
+            # Update session with item removed — get current session first
+            current = await self._commerce.get_checkout_session(
+                session_id=slots.get("checkout_session_id", ""),
+                request_id=request_id,
+            )
+            existing_items = current.data.get("line_items_snapshot", [])
+            updated_items = [
+                item for item in existing_items
+                if item.get("item", {}).get("id") != slots["product_id"]
+            ]
+            if current.success and current.data.get("session_id"):
+                return await self._commerce.update_checkout_session(
+                    session_id=current.data["session_id"],
+                    line_items=updated_items,
+                    request_id=request_id,
+                )
+            # No active session — nothing to remove
+            from app.clients.commerce_client import CommerceResponse
+            return CommerceResponse(success=True, data={"message": "Cart is already empty."})
+
+        elif intent == "view_cart":
+            # Return current cart state — use a placeholder session lookup
+            from app.clients.commerce_client import CommerceResponse
+            return CommerceResponse(
+                success=True,
+                data={"message": "view_cart", "customer_id": customer_id},
+            )
+
+        elif intent == "checkout_initiate":
+            return await self._commerce.create_checkout_session(
+                customer_id=customer_id,
+                line_items=slots.get("line_items", []),
+                buyer={"email": slots["buyer_email"]} if slots.get("buyer_email") else None,
+                request_id=request_id,
+            )
+
+        elif intent == "order_status":
+            return await self._commerce.get_order(
+                order_id=slots["order_id"],
+                customer_id=customer_id,
+                request_id=request_id,
+            )
+
+        elif intent == "order_history":
+            return await self._commerce.list_orders(
+                customer_id=customer_id,
+                request_id=request_id,
+            )
+
+        elif intent == "cancel_order":
+            return await self._commerce.cancel_order(
+                order_id=slots["order_id"],
+                customer_id=customer_id,
+                request_id=request_id,
+            )
+
+        else:
+            from app.clients.commerce_client import CommerceResponse
+            return CommerceResponse(
+                success=False,
+                data={},
+                error_code="unknown_intent",
+                error_message=f"Unknown commerce intent: {intent}",
+            )
+
+    def _format_commerce_response(self, intent: str, response) -> str:
+        """
+        Format a CommerceResponse into a natural language reply.
+        When requires_escalation, format continue_url as a clickable markdown link.
+        """
+        # Handle requires_escalation — surface continue_url as a clickable link
+        if response.requires_escalation and response.continue_url:
+            return (
+                "To complete your checkout, please visit the merchant's secure checkout page: "
+                f"[Complete your checkout here]({response.continue_url})"
+            )
+
+        if not response.success:
+            error_messages = {
+                "out_of_stock":            "Sorry, that item is currently out of stock.",
+                "cart_limit_exceeded":     "Your cart is full (50 items maximum).",
+                "payment_failed":          "The payment could not be processed. Please try a different payment method.",
+                "session_not_found":       "I couldn't find an active checkout session. Would you like to start a new one?",
+                "checkout_expired":        "Your checkout session has expired. Would you like to start over?",
+                "not_found":               "I couldn't find that order. Please check the order number and try again.",
+                "cancellation_not_allowed": "This order can't be cancelled because it has already shipped.",
+                "return_not_eligible":     "This order isn't eligible for a return yet.",
+                "commerce_unavailable":    "The commerce service is temporarily unavailable. Please try again in a moment.",
+            }
+            return error_messages.get(
+                response.error_code or "",
+                "Something went wrong. Please try again.",
+            )
+
+        data = response.data
+
+        if intent == "add_to_cart":
+            items = data.get("line_items_snapshot", [])
+            count = len(items)
+            return f"Added to your cart! You now have {count} item{'s' if count != 1 else ''} in your cart."
+
+        elif intent == "remove_from_cart":
+            return "Removed from your cart."
+
+        elif intent == "view_cart":
+            items = data.get("line_items_snapshot", [])
+            if not items:
+                return "Your cart is empty. Would you like to browse some products?"
+            lines = []
+            for item in items:
+                product = item.get("item", {})
+                qty = item.get("quantity", 1)
+                title = product.get("title", "Item")
+                price_cents = product.get("price", 0)
+                price = price_cents / 100 if price_cents else 0
+                lines.append(f"- {title} × {qty} (${price:.2f} each)")
+            totals = data.get("totals_snapshot", {})
+            subtotal = totals.get("subtotal_cents", 0) / 100
+            summary = "\n".join(lines)
+            return f"Here's what's in your cart:\n{summary}\n\nSubtotal: ${subtotal:.2f}"
+
+        elif intent == "checkout_initiate":
+            status = data.get("ucp_status", data.get("status", ""))
+            session_id = data.get("session_id", "")
+            if status == "incomplete":
+                return (
+                    "I've started your checkout. "
+                    "Please provide your shipping address to continue."
+                )
+            return f"Checkout session created (status: {status})."
+
+        elif intent == "order_status":
+            status = data.get("status", "unknown")
+            order_id = data.get("ucp_order_id", data.get("order_id", ""))
+            fulfillment = data.get("fulfillment", {})
+            tracking = None
+            for event in fulfillment.get("events", []):
+                if event.get("type") == "shipped":
+                    tracking = event.get("tracking_number")
+                    break
+            msg = f"Order {order_id} is currently **{status}**."
+            if tracking:
+                msg += f" Tracking number: {tracking}."
+            return msg
+
+        elif intent == "order_history":
+            orders = data.get("orders", data.get("items", []))
+            if not orders:
+                return "You don't have any orders yet."
+            lines = []
+            for order in orders[:5]:
+                oid = order.get("ucp_order_id", order.get("order_id", ""))
+                status = order.get("status", "")
+                totals = order.get("totals", {})
+                total_cents = totals.get("grand_total_cents", 0)
+                total = total_cents / 100 if total_cents else 0
+                lines.append(f"- Order {oid}: {status} — ${total:.2f}")
+            result = "Here are your recent orders:\n" + "\n".join(lines)
+            if len(orders) > 5:
+                result += f"\n\n...and {len(orders) - 5} more."
+            return result
+
+        elif intent == "cancel_order":
+            order_id = data.get("ucp_order_id", data.get("order_id", ""))
+            return f"Order {order_id} has been cancelled successfully."
+
+        return "Done! Is there anything else I can help you with?"
 
     # ── Instant response builders ─────────────────────────────────────────
 

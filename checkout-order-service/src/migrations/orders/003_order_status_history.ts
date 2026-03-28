@@ -1,7 +1,7 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class CreateOrderStatusHistory1000000012 implements MigrationInterface {
-  name = 'CreateOrderStatusHistory1000000012';
+export class CreateOrderStatusHistory1700000000012 implements MigrationInterface {
+  name = 'CreateOrderStatusHistory1700000000012';
 
   async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`

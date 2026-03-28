@@ -78,6 +78,14 @@ class Settings(BaseSettings):
     CACHE_RAG_TTL: int = 300       # 5 minutes
     CACHE_PROFILE_TTL: int = 300   # 5 minutes
 
+    # ── Commerce Service ──────────────────────────────
+    COMMERCE_SERVICE_URL: str = "http://checkout-order-service:3001"
+    COMMERCE_SERVICE_API_KEY: str = ""
+    COMMERCE_TIMEOUT_SECONDS: int = 15
+
+    # ── Feature Flags (LaunchDarkly) ──────────────────
+    LAUNCHDARKLY_SDK_KEY: str = ""
+
     # ── Logging ───────────────────────────────────────
     LOG_LEVEL: str = "INFO"
     LOG_JSON: bool = False

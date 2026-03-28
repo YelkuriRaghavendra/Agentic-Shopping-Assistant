@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     OPENAI_EMBEDDING_MODEL:     str  = "text-embedding-3-large"
     EMBEDDING_DIMENSIONS:       int  = 1536
 
+    # ── Commerce service (order embedding events) ────────────────────────────
+    COMMERCE_SERVICE_URL:     str = "http://localhost:3001"
+    COMMERCE_SERVICE_API_KEY: str = ""
+
     # ── Security ──────────────────────────────────────
     API_KEY_HEADER: str = "X-API-Key"
     API_KEY:        str = ""          # must be set via env in production

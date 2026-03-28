@@ -257,6 +257,25 @@ TOOL_DEFINITIONS: list[dict] = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "order_history_lookup",
+            "description": (
+                "Look up a customer's order history using semantic search over their past orders. "
+                "Use when the customer asks about past purchases, order status, or references a previous order. "
+                "Always pass the customer_id to scope results to the authenticated customer."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query":       {"type": "string", "description": "What the customer is asking about their orders"},
+                    "customer_id": {"type": "string", "description": "Authenticated customer UUID — required for scoping"},
+                },
+                "required": ["query", "customer_id"],
+            },
+        },
+    },
 ]
 
 
@@ -543,4 +562,41 @@ class ToolRegistry:
             data={"content": content},
             retrieved_chunks=[],
             summary=content,
+        )
+
+    async def _handle_order_history_lookup(self, args: dict) -> ToolResult:
+        """
+        Retrieve order embeddings scoped to the authenticated customer.
+
+        Requirement 12.2, 12.4: customer_id filter is MANDATORY for ORDER doc_type.
+        If customer_id is missing, returns an empty result rather than leaking
+        cross-customer data.
+        """
+        query = args.get("query", "")
+        customer_id = args.get("customer_id", "")
+
+        if not customer_id:
+            logger.warning("tool_registry.order_history_lookup.missing_customer_id")
+            return ToolResult(
+                tool_name="order_history_lookup",
+                success=False,
+                data={"error": "customer_id is required for order history lookup"},
+                retrieved_chunks=[],
+                summary="Could not retrieve order history: customer not identified.",
+            )
+
+        chunks = await self._rag.retrieve(
+            query=query,
+            filters={
+                "document_type": "ORDER",
+                "customer_id": customer_id,
+            },
+            top_k=5,
+        )
+        return ToolResult(
+            tool_name="order_history_lookup",
+            success=True,
+            data={"customer_id": customer_id, "results_count": len(chunks)},
+            retrieved_chunks=chunks,
+            summary=f"Found {len(chunks)} order record(s) for customer.",
         )

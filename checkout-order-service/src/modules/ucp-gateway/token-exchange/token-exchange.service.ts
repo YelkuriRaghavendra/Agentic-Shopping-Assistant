@@ -82,7 +82,7 @@ export class TokenExchangeService {
     } catch {
       // Network-level failure
       throw new CommerceException(
-        CommerceErrorCodes.UCP_AUTH_UNAVAILABLE,
+        CommerceErrorCodes.UCP_UNAVAILABLE,
         'UCP token endpoint is unreachable',
         HttpStatus.SERVICE_UNAVAILABLE,
       );
@@ -91,7 +91,7 @@ export class TokenExchangeService {
     if (!response.ok) {
       this.logger.error(`UCP token endpoint returned HTTP ${response.status}`);
       throw new CommerceException(
-        CommerceErrorCodes.UCP_AUTH_UNAVAILABLE,
+        CommerceErrorCodes.UCP_UNAVAILABLE,
         'Failed to obtain UCP access token',
         HttpStatus.SERVICE_UNAVAILABLE,
       );

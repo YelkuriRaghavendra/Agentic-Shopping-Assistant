@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { importPKCS8, importJWK, SignJWT, type KeyLike } from 'jose';
+import { importPKCS8, importJWK, SignJWT } from 'jose';
 import * as crypto from 'crypto';
 
 /**
@@ -13,7 +13,7 @@ import * as crypto from 'crypto';
 @Injectable()
 export class RequestSigningService implements OnModuleInit {
   private readonly logger = new Logger(RequestSigningService.name);
-  private privateKey!: KeyLike;
+  private privateKey!: CryptoKey;
   private keyId!: string;
   private algorithm!: string;
 
@@ -58,7 +58,7 @@ export class RequestSigningService implements OnModuleInit {
     if (jwkJson) {
       try {
         const jwk = JSON.parse(jwkJson);
-        this.privateKey = (await importJWK(jwk, this.algorithm)) as KeyLike;
+        this.privateKey = (await importJWK(jwk, this.algorithm)) as CryptoKey;
         this.logger.log(`Loaded platform signing key (JWK) kid=${this.keyId}`);
         return;
       } catch (err) {
@@ -69,7 +69,7 @@ export class RequestSigningService implements OnModuleInit {
 
     if (pkcs8Pem) {
       try {
-        this.privateKey = await importPKCS8(pkcs8Pem, this.algorithm);
+        this.privateKey = await importPKCS8(pkcs8Pem, this.algorithm) as CryptoKey;
         this.logger.log(`Loaded platform signing key (PKCS8) kid=${this.keyId}`);
         return;
       } catch (err) {
@@ -87,9 +87,9 @@ export class RequestSigningService implements OnModuleInit {
     this.privateKey = privateKey;
   }
 
-  private async generateEphemeralKey(): Promise<{ privateKey: KeyLike }> {
+  private async generateEphemeralKey(): Promise<{ privateKey: CryptoKey }> {
     const { generateKeyPair } = await import('jose');
     const { privateKey } = await generateKeyPair('ES256');
-    return { privateKey };
+    return { privateKey: privateKey as CryptoKey };
   }
 }

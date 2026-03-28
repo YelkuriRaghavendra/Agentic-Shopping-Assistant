@@ -45,6 +45,9 @@ class RAGClient(BaseHTTPClient):
         Results are cached in Redis for CACHE_RAG_TTL seconds.
         Returns empty list if service unavailable — chat still works,
         bot just says it couldn't find products.
+
+        For ORDER doc_type, `filters` MUST include `customer_id` to satisfy
+        Requirement 12.2, 12.4 (customer-scoped retrieval).
         """
         effective_filters = filters or {}
         effective_top_k = top_k or settings.RAG_TOP_K
@@ -58,6 +61,18 @@ class RAGClient(BaseHTTPClient):
 
         # ── Call RAG service ─────────────────────────────────────────
         try:
+            # Build the RetrievalFilters payload
+            retrieval_filters: dict = {}
+            if filters:
+                # Pass through all known filter keys
+                for key in ("brand", "category", "min_price", "max_price", "in_stock", "customer_id"):
+                    if filters.get(key) is not None:
+                        retrieval_filters[key] = filters[key]
+                # document_type can be passed as "doc_type" (legacy) or "document_type"
+                doc_type = filters.get("document_type") or filters.get("doc_type")
+                if doc_type:
+                    retrieval_filters["document_type"] = doc_type
+
             payload = {
                 "query":   query,
                 "top_k":   effective_top_k,

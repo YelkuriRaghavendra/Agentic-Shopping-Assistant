@@ -14,3 +14,4 @@ class DocumentType(str, enum.Enum):
     POLICY   = "POLICY"
     ARTICLE  = "ARTICLE"
     RAW_TEXT = "RAW_TEXT"
+    ORDER    = "ORDER"

@@ -63,6 +63,7 @@ export interface ChatResponse {
   blocked: boolean;
   latency_ms: number;
   tokens_used: number;
+  continue_url?: string;
 }
 
 export interface CustomerResponse {
@@ -112,4 +113,5 @@ export interface ChatMessageUI {
   citedProducts?: ProductCardDTO[];
   suggestions?: SuggestionChip[];
   streamDone?: boolean;
+  continueUrl?: string;
 }

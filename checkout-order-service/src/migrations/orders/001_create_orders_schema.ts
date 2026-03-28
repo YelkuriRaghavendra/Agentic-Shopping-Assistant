@@ -1,7 +1,7 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class CreateOrdersSchema1000000010 implements MigrationInterface {
-  name = 'CreateOrdersSchema1000000010';
+export class CreateOrdersSchema1700000000010 implements MigrationInterface {
+  name = 'CreateOrdersSchema1700000000010';
 
   async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`CREATE SCHEMA IF NOT EXISTS orders`);

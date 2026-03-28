@@ -80,6 +80,23 @@ export const MessageBubble = memo(function MessageBubble({ message, onSelectProd
           <ProductSlider products={message.citedProducts} onSelectProduct={onSelectProduct} onCompareProducts={onCompareProducts} />
         )}
 
+        {/* Continue URL CTA */}
+        {!isUser && message.continueUrl && (
+          <a
+            href={message.continueUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-block rounded-full text-[12px] font-medium px-4 py-2"
+            style={{
+              background: "linear-gradient(135deg, #1D9E75, #0F6E56)",
+              color: "#fff",
+              textDecoration: "none",
+            }}
+          >
+            Complete your checkout →
+          </a>
+        )}
+
         {/* Suggestion chips */}
         {!isUser && message.suggestions && message.suggestions.length > 0 && onSelectSuggestion && (
           <SuggestionChips suggestions={message.suggestions} onSelectSuggestion={onSelectSuggestion} />
