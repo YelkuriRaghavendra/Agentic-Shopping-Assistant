@@ -70,7 +70,7 @@ class IngestResponse(BaseModel):
 class BulkProductIngestRequest(BaseModel):
     products: list[ProductIngestRequest] = Field(
         ..., min_length=1, max_length=500,
-        description="List of products to ingest (1-100).",
+        description="List of products to ingest (1-500).",
     )
 
 

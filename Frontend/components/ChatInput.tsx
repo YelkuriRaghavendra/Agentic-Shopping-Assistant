@@ -50,6 +50,7 @@ export function ChatInput({ onSend, disabled = false, sessionEnded = false }: Ch
           onKeyDown={handleKeyDown}
           disabled={disabled}
           placeholder={placeholder}
+          maxLength={2000}
           aria-label="Chat message input"
           className="flex-1 bg-transparent text-[13px] outline-none disabled:cursor-not-allowed"
           style={{

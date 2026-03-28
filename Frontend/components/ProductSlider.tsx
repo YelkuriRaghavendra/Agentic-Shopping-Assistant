@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { memo, useState } from "react";
 import { theme } from "@/lib/theme";
 import type { ProductCardDTO } from "@/types/chat.types";
 
 interface ProductSliderProps {
   products: ProductCardDTO[];
   onSelectProduct: (productId: string, productName: string) => void;
+  onCompareProducts?: (products: ProductCardDTO[]) => void;
 }
 
 function StarRating({ rating }: { rating: number | null }) {
@@ -22,30 +23,59 @@ function StarRating({ rating }: { rating: number | null }) {
   );
 }
 
-export function ProductSlider({ products, onSelectProduct }: ProductSliderProps) {
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const selectedProduct = products.find((p) => p.productId === selectedId) ?? null;
+export const ProductSlider = memo(function ProductSlider({ products, onSelectProduct, onCompareProducts }: ProductSliderProps) {
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [sending, setSending] = useState(false);
 
-  function handleCardClick(productId: string) {
-    setSelectedId((prev) => (prev === productId ? null : productId));
+  function toggleSelect(productId: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(productId)) {
+        next.delete(productId);
+      } else {
+        next.add(productId);
+      }
+      return next;
+    });
   }
 
   function handleSend() {
-    if (!selectedProduct) return;
-    onSelectProduct(selectedProduct.productId, selectedProduct.productName);
-    setSelectedId(null);
+    if (selectedIds.size !== 1 || sending) return;
+    const id = [...selectedIds][0];
+    const product = products.find((p) => p.productId === id);
+    if (product) {
+      setSending(true);
+      onSelectProduct(product.productId, product.productName);
+      setSelectedIds(new Set());
+    }
+  }
+
+  function handleCompare() {
+    if (selectedIds.size < 2 || !onCompareProducts || sending) return;
+    setSending(true);
+    const selected = products.filter((p) => selectedIds.has(p.productId));
+    onCompareProducts(selected);
+    setSelectedIds(new Set());
   }
 
   return (
     <div className="mt-1 flex flex-col gap-2 w-full">
       {/* Scrollable card row */}
-      <div className="flex gap-3 overflow-x-auto pb-1" style={{ scrollSnapType: "x mandatory" }}>
+      <div role="list" className="flex gap-3 overflow-x-auto pb-1" style={{ scrollSnapType: "x mandatory" }}>
         {products.map((product) => {
-          const isSelected = product.productId === selectedId;
+          const isSelected = selectedIds.has(product.productId);
           return (
             <div
               key={product.productId}
-              onClick={() => handleCardClick(product.productId)}
+              role="listitem"
+              tabIndex={0}
+              onClick={() => toggleSelect(product.productId)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  toggleSelect(product.productId);
+                }
+              }}
               className="cursor-pointer shrink-0 flex flex-col relative transition-all duration-150"
               style={{
                 width: 180,
@@ -114,33 +144,66 @@ export function ProductSlider({ products, onSelectProduct }: ProductSliderProps)
         })}
       </div>
 
-      {/* Send button — only when a card is selected */}
-      {selectedProduct && (
-        <div className="flex justify-end">
-          <button
-            onClick={handleSend}
-            className="flex items-center gap-1.5 px-4 py-2 transition-all duration-150"
-            style={{
-              background: theme.teal[600],
-              color: "#000",
-              borderRadius: theme.radius.sharp,
-              fontFamily: theme.font.mono,
-              fontSize: "9px",
-              letterSpacing: "1.5px",
-              textTransform: "uppercase",
-              border: "none",
-              cursor: "pointer",
-            }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = theme.teal[700]; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = theme.teal[600]; }}
-          >
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" />
-            </svg>
-            Send
-          </button>
+      {/* Action buttons */}
+      {selectedIds.size > 0 && (
+        <div className="flex justify-end gap-2">
+          {/* Compare button — 2+ selected */}
+          {selectedIds.size >= 2 && onCompareProducts && (
+            <button
+              onClick={handleCompare}
+              disabled={sending}
+              className="flex items-center gap-1.5 px-4 py-2 transition-all duration-150"
+              style={{
+                background: "transparent",
+                color: theme.teal[600],
+                border: `1px solid ${theme.teal[600]}`,
+                borderRadius: theme.radius.sharp,
+                fontFamily: theme.font.mono,
+                fontSize: "9px",
+                letterSpacing: "1.5px",
+                textTransform: "uppercase",
+                cursor: sending ? "not-allowed" : "pointer",
+                opacity: sending ? 0.5 : 1,
+              }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "rgba(29,158,117,0.1)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
+            >
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" />
+              </svg>
+              Compare {selectedIds.size}
+            </button>
+          )}
+
+          {/* Send button — exactly 1 selected */}
+          {selectedIds.size === 1 && (
+            <button
+              onClick={handleSend}
+              disabled={sending}
+              className="flex items-center gap-1.5 px-4 py-2 transition-all duration-150"
+              style={{
+                background: theme.teal[600],
+                color: "#000",
+                borderRadius: theme.radius.sharp,
+                fontFamily: theme.font.mono,
+                fontSize: "9px",
+                letterSpacing: "1.5px",
+                textTransform: "uppercase",
+                border: "none",
+                cursor: sending ? "not-allowed" : "pointer",
+                opacity: sending ? 0.5 : 1,
+              }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = theme.teal[700]; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = theme.teal[600]; }}
+            >
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" />
+              </svg>
+              Send
+            </button>
+          )}
         </div>
       )}
     </div>
   );
-}
+});

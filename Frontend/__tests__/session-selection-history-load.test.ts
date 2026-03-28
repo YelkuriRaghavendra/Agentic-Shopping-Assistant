@@ -32,7 +32,7 @@ function makeHistoryResponse() {
 function makeSessionsResponse(sessionId: string) {
   return [
     {
-      id: sessionId,
+      session_id: sessionId,
       customer_id: "cust-1",
       channel: "web",
       status: "active" as const,

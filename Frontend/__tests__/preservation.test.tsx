@@ -100,7 +100,7 @@ describe("Preservation: Observation baseline on unfixed code", () => {
   it("3.6 TypingIndicator renders three animated dot spans", () => {
     const { container } = render(<TypingIndicator />);
     // Three dots: h-2 w-2 rounded-full bg-violet-400
-    const dots = container.querySelectorAll(".h-2.w-2.rounded-full");
+    const dots = container.querySelectorAll(".h-1\\.5.w-1\\.5.rounded-full");
     expect(dots).toHaveLength(3);
   });
 });

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { httpClient } from "@/services/httpClient";
 import { endpoints } from "@/config/config";
 import type { SessionResponse } from "@/types/chat.types";
@@ -13,47 +14,58 @@ export interface UseSessionsReturn {
   createSession: (customerId: string | null) => Promise<void>;
 }
 
+function getSessionFromUrl(): string | null {
+  if (typeof window === "undefined") return null;
+  const params = new URLSearchParams(window.location.search);
+  return params.get("session");
+}
+
 export function useSessions(customerId: string | null): UseSessionsReturn {
-  const [sessions, setSessions] = useState<SessionResponse[]>([]);
-  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(getSessionFromUrl);
+  const queryClient = useQueryClient();
 
-  useEffect(() => {
-    if (!customerId) return;
-
-    let cancelled = false;
-    setIsLoading(true);
-
-    httpClient
-      .get<SessionResponse[]>(endpoints.customerSessions(customerId))
-      .then((data) => {
-        if (cancelled) return;
-        setSessions(data);
-      })
-      .catch(() => {
-        // silently fail — sessions list is non-critical
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [customerId]);
+  const { data: sessions = [], isLoading } = useQuery<SessionResponse[]>({
+    queryKey: ["sessions", customerId],
+    queryFn: () =>
+      httpClient.get<SessionResponse[]>(
+        endpoints.customerSessions(customerId!)
+      ),
+    enabled: !!customerId,
+  });
 
   const selectSession = useCallback((id: string) => {
     setActiveSessionId(id);
+    // Update URL for deep linking without full navigation
+    const url = new URL(window.location.href);
+    url.searchParams.set("session", id);
+    window.history.replaceState({}, "", url.toString());
   }, []);
 
-  const createSession = useCallback(async (cid: string | null) => {
-    const newSession = await httpClient.post<SessionResponse>(
-      endpoints.createSession,
-      { customer_id: cid, channel: "web" }
-    );
-    setSessions((prev) => [newSession, ...prev]);
-    setActiveSessionId(newSession.session_id);
-  }, []);
+  const createSession = useCallback(
+    async (cid: string | null) => {
+      const newSession = await httpClient.post<SessionResponse>(
+        endpoints.createSession,
+        { customer_id: cid, channel: "web" }
+      );
+      queryClient.setQueryData<SessionResponse[]>(
+        ["sessions", customerId],
+        (prev) => [newSession, ...(prev ?? [])]
+      );
+      setActiveSessionId(newSession.session_id);
+    },
+    [customerId, queryClient]
+  );
+
+  // Cross-tab sync: refetch sessions when another tab makes changes
+  useEffect(() => {
+    const handler = (e: StorageEvent) => {
+      if (e.key === "session_updated") {
+        queryClient.invalidateQueries({ queryKey: ["sessions", customerId] });
+      }
+    };
+    window.addEventListener("storage", handler);
+    return () => window.removeEventListener("storage", handler);
+  }, [customerId, queryClient]);
 
   return { sessions, activeSessionId, isLoading, selectSession, createSession };
 }

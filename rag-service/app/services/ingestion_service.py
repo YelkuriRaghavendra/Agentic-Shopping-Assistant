@@ -167,6 +167,9 @@ class IngestionService:
             texts   = [chunk.content for chunk in chunk_rows]
             vectors = await _embedding_client.embed_texts(texts, model.dimensions)
 
+            if len(vectors) != len(chunk_rows):
+                raise RuntimeError(f"Embedding count mismatch: {len(vectors)} vectors for {len(chunk_rows)} chunks")
+
             embedding_rows = [
                 Embedding(
                     chunk_id=chunk_rows[index].chunk_id,

@@ -29,15 +29,36 @@ def _to_placeholder(match: re.Match) -> str:
     return f"CITE_P{match.group(1)}_CITE"
 
 
+_SAFE_HTML_TAGS = re.compile(
+    r'<(/?)(?:table|thead|tbody|tr|th|td)(\s[^>]*)?>',
+    re.IGNORECASE,
+)
+
+
 def _markdown_to_html(text: str) -> str:
     """
     Convert LLM markdown output to safe HTML.
 
     html.escape() is applied first to neutralise any raw HTML tags (XSS
-    prevention). It only escapes <, >, &, ", ' — none of which are part of
-    Markdown syntax (* _ # ` - etc.) — so bold/italic/lists still render.
+    prevention). Safe structural tags (table elements) are preserved via
+    placeholder substitution so they render in the chat UI.
     """
-    escaped = html_module.escape(text)
+    # Temporarily replace safe HTML table tags with placeholders
+    safe_tags: list[str] = []
+
+    def _save_tag(match: re.Match) -> str:
+        safe_tags.append(match.group(0))
+        return f"__SAFE_TAG_{len(safe_tags) - 1}__"
+
+    text_with_placeholders = _SAFE_HTML_TAGS.sub(_save_tag, text)
+
+    # Escape everything else (XSS prevention)
+    escaped = html_module.escape(text_with_placeholders)
+
+    # Restore safe table tags
+    for i, tag in enumerate(safe_tags):
+        escaped = escaped.replace(f"__SAFE_TAG_{i}__", tag)
+
     _md.reset()
     return _md.convert(escaped)
 

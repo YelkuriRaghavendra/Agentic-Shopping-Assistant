@@ -33,6 +33,16 @@ router.post(
     ),
 )(chat_controller.send_message)
 
+# ── Streaming chat endpoint ──────────────────────────────────────────────────
+router.post(
+    "/stream",
+    summary="Send a message (streaming)",
+    description=(
+        "Streaming version of the chat endpoint. "
+        "Returns Server-Sent Events with tokens as they arrive."
+    ),
+)(chat_controller.send_message_stream)
+
 # ── Session management ────────────────────────────────────────────────────────
 router.post(
     "/sessions",

@@ -4,13 +4,14 @@ import { AnimatePresence } from "framer-motion";
 import { MessageBubble } from "./MessageBubble";
 import { ChatInput } from "./ChatInput";
 import { TypingIndicator } from "./TypingIndicator";
-import type { ChatMessageUI } from "@/types/chat.types";
+import type { ChatMessageUI, ProductCardDTO } from "@/types/chat.types";
 import type React from "react";
 
 export interface ChatWindowProps {
   messages: ChatMessageUI[];
   sendMessage: (text: string) => void;
   sendProductMessage: (productId: string, productName: string) => void;
+  sendCompareMessage: (products: ProductCardDTO[]) => void;
   isLoading: boolean;
   isTyping: boolean;
   inputDisabled: boolean;
@@ -33,6 +34,7 @@ export function ChatWindow({
   messages,
   sendMessage,
   sendProductMessage,
+  sendCompareMessage,
   isLoading,
   isTyping,
   inputDisabled,
@@ -100,9 +102,12 @@ export function ChatWindow({
                 message={msg}
                 onSelectProduct={sendProductMessage}
                 onSelectSuggestion={sendMessage}
+                onCompareProducts={sendCompareMessage}
               />
             ))}
-            {isTyping && <TypingIndicator key="typing" />}
+            {isTyping && !messages.some((m) => m.role === "bot" && !m.streamDone) && (
+              <TypingIndicator key="typing" />
+            )}
           </AnimatePresence>
         )}
         <div ref={bottomRef} />

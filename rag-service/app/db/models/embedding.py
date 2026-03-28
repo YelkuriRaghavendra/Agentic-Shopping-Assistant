@@ -1,9 +1,16 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from sqlalchemy import String, Integer, Boolean, ForeignKey, Index, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 from app.db.models.base import Base
 from pgvector.sqlalchemy import Vector
 import uuid
+
+if TYPE_CHECKING:
+    from app.db.models.chunk import Chunk
 
 
 class LLMModel(Base):
@@ -26,6 +33,8 @@ class Embedding(Base):
     embedding_id:   Mapped[uuid.UUID]       = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     chunk_id:       Mapped[uuid.UUID]       = mapped_column(UUID(as_uuid=True), ForeignKey("chunks.chunk_id", ondelete="CASCADE"), nullable=False)
     llm_model_id:   Mapped[uuid.UUID]       = mapped_column(UUID(as_uuid=True), ForeignKey("llm_models.llm_model_id"), nullable=False)
+    # NOTE: The Vector dimension (1536) must match EMBEDDING_DIMENSIONS in config.py
+    # and the output dimensions of the configured embedding model (OPENAI_EMBEDDING_MODEL).
     embedding:      Mapped[list[float]]     = mapped_column(Vector(1536), nullable=False)
 
     chunk: Mapped["Chunk"]      = relationship(back_populates="embeddings")

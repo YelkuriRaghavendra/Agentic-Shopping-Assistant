@@ -72,6 +72,12 @@ class Settings(BaseSettings):
         "override your",
     ]
 
+    # ── Redis ────────────────────────────────────────
+    REDIS_URL: str = "redis://localhost:6379/0"
+    REDIS_ENABLED: bool = True
+    CACHE_RAG_TTL: int = 300       # 5 minutes
+    CACHE_PROFILE_TTL: int = 300   # 5 minutes
+
     # ── Logging ───────────────────────────────────────
     LOG_LEVEL: str = "INFO"
     LOG_JSON: bool = False
