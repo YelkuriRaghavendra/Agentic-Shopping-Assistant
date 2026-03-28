@@ -110,22 +110,22 @@ Tasks are ordered by dependency: app scaffold → UcpClientModule → CheckoutMo
     - **Property 31: Retry with exponential backoff**
     - **Validates: Requirements 15.3, 15.4**
 
-  - [ ] 2.10 Implement `UcpCheckoutClient`
+  - [x] 2.10 Implement `UcpCheckoutClient`
     - Methods: `createCheckoutSession()`, `getCheckoutSession()`, `updateCheckoutSession()`, `completeCheckoutSession()`, `cancelCheckoutSession()`
     - Each method builds required UCP REST Binding headers: `UCP-Agent: profile="..."`, `Idempotency-Key` (mutating ops), `Request-Signature` (via `RequestSigningService`), `Request-Id`
     - Wires `MerchantProfileService`, `IdempotencyService`, `RetryService`, `CircuitBreakerService`
     - _Requirements: 15.5_
 
-- [ ] 3. Checkpoint — UcpClientModule
+- [x] 3. Checkpoint — UcpClientModule
   - Ensure all UcpClientModule tests pass. Ask the user if questions arise.
 
-- [ ] 4. CheckoutModule — session management
-  - [ ] 4.1 Define `CheckoutSession` TypeORM entity
+- [x] 4. CheckoutModule — session management
+  - [x] 4.1 Define `CheckoutSession` TypeORM entity
     - `CheckoutSession` entity with `{ schema: 'checkout', name: 'checkout_sessions' }`
     - Fields: `ucpCheckoutId`, `ucpStatus: UcpCheckoutStatus`, `continueUrl`, `expiresAt`, `lineItemsSnapshot`, `buyerSnapshot`, `contextSnapshot`, `paymentHandlers`, `totalsSnapshot`, `ucpOrderId`, `ucpOrderPermalink`
     - _Requirements: 13.1_
 
-  - [ ] 4.2 Implement `CheckoutSessionService`
+  - [x] 4.2 Implement `CheckoutSessionService`
     - `createSession(merchantId, customerId, lineItems, buyer?, context?)` — call `UcpCheckoutClient.createCheckoutSession()`, store local record, return session with `ucp_status`
     - `updateSession(sessionId, lineItems, buyer?, context?)` — call `UcpCheckoutClient.updateCheckoutSession()` (full replacement), update local snapshot
     - `completeSession(sessionId, paymentInstrument)` — call `UcpCheckoutClient.completeCheckoutSession()`, handle response status
@@ -171,8 +171,8 @@ Tasks are ordered by dependency: app scaffold → UcpClientModule → CheckoutMo
     - **Property 12: Canceled session is terminal**
     - **Validates: Requirements 2.6**
 
-- [ ] 5. CheckoutModule — controller and payment
-  - [ ] 5.1 Implement `CheckoutController`
+- [x] 5. CheckoutModule — controller and payment
+  - [x] 5.1 Implement `CheckoutController`
     - `POST /commerce/checkout/sessions` — create session; validate `line_items`, `buyer`, `context` DTOs
     - `GET /commerce/checkout/sessions/:id` — return local session state
     - `PUT /commerce/checkout/sessions/:id` — update session (full replacement)
@@ -205,16 +205,16 @@ Tasks are ordered by dependency: app scaffold → UcpClientModule → CheckoutMo
     - **Property 7: Zero-quantity item excluded from session**
     - **Validates: Requirements 1.7**
 
-- [ ] 6. Checkpoint — CheckoutModule
+- [x] 6. Checkpoint — CheckoutModule
   - Ensure all CheckoutModule tests pass. Ask the user if questions arise.
 
-- [ ] 7. OrderModule — order creation and history
-  - [ ] 7.1 Define `Order` and `OrderStatusHistory` TypeORM entities
+- [x] 7. OrderModule — order creation and history
+  - [x] 7.1 Define `Order` and `OrderStatusHistory` TypeORM entities
     - `Order` entity with `{ schema: 'orders', name: 'orders' }` — JSONB fields: `lineItems`, `fulfillment`, `adjustments`, `totals`
     - `OrderStatusHistory` entity with `{ schema: 'orders', name: 'order_status_history' }`
     - _Requirements: 13.2_
 
-  - [ ] 7.2 Implement `OrderService` — BullMQ consumer and order creation
+  - [x] 7.2 Implement `OrderService` — BullMQ consumer and order creation
     - Consume `order.confirmed` from BullMQ `order-events` queue
     - Create `orders.orders` record with `status = processing`, `ucp_order_id`, `checkout_id`, `permalink_url`, `line_items`, `fulfillment`, `totals`; write initial `order_status_history`; write `audit_log` — all in one PostgreSQL transaction
     - Return `orderId`, `ucpOrderId`, `status`, `permalinkUrl` in confirmation payload
@@ -225,7 +225,7 @@ Tasks are ordered by dependency: app scaffold → UcpClientModule → CheckoutMo
     - **Property 17: Order creation completeness**
     - **Validates: Requirements 5.1, 5.2, 5.3, 5.4**
 
-  - [ ] 7.4 Implement order history and status query endpoints
+  - [x] 7.4 Implement order history and status query endpoints
     - `GET /commerce/orders` — cursor-based paginated history scoped to `customerId`, ordered by `createdAt DESC`, default page size 20
     - `GET /commerce/orders/:id` — order detail with status history, fulfillment events, and adjustments; return `not_found` if order does not belong to authenticated customer
     - _Requirements: 6.1, 6.2, 6.3, 6.4, 7.1, 7.2, 7.3, 7.4_
@@ -246,8 +246,8 @@ Tasks are ordered by dependency: app scaffold → UcpClientModule → CheckoutMo
     - **Property 21: Fulfilled order includes fulfillment events**
     - **Validates: Requirements 7.3**
 
-- [ ] 8. OrderModule — cancellations, returns, adjustments, and audit log
-  - [ ] 8.1 Implement cancellation and return endpoints
+- [x] 8. OrderModule — cancellations, returns, adjustments, and audit log
+  - [x] 8.1 Implement cancellation and return endpoints
     - `POST /commerce/orders/:id/cancel` — validate status is `processing`; append `cancellation` adjustment to `adjustments` JSONB; transition to `cancelled`; write status history and audit log in one transaction
     - `POST /commerce/orders/:id/return` — validate status is `fulfilled`; append `return` adjustment; transition to `return_requested`; write status history and audit log
     - Reject with `cancellation_not_allowed` for `fulfilled` orders
@@ -266,7 +266,7 @@ Tasks are ordered by dependency: app scaffold → UcpClientModule → CheckoutMo
     - **Property 24: Adjustments are append-only**
     - **Validates: Requirements 8.5, 9.6**
 
-  - [ ] 8.5 Implement `AuditService` — append-only audit log
+  - [x] 8.5 Implement `AuditService` — append-only audit log
     - `AuditService.write()` always runs inside the same PostgreSQL transaction as the order mutation
     - If the audit INSERT fails, the entire transaction rolls back and the caller receives 500
     - No UPDATE or DELETE operations permitted on `orders.audit_log`
@@ -280,8 +280,8 @@ Tasks are ordered by dependency: app scaffold → UcpClientModule → CheckoutMo
     - **Property 33: Audit log write failure rolls back mutation**
     - **Validates: Requirements 19.5**
 
-- [ ] 9. OrderModule — webhook handler and platform profile
-  - [ ] 9.1 Implement `PlatformProfileController`
+- [x] 9. OrderModule — webhook handler and platform profile
+  - [x] 9.1 Implement `PlatformProfileController`
     - `GET /.well-known/ucp` — return our platform's UCP profile document
     - Include `dev.ucp.shopping.order` capability with `config.webhook_url: "${PLATFORM_BASE_URL}/commerce/webhooks/ucp/orders"`
     - Include our platform's public signing key (JWK) so merchants can verify our request signatures
@@ -291,7 +291,7 @@ Tasks are ordered by dependency: app scaffold → UcpClientModule → CheckoutMo
     - **Property 34: Platform profile exposes webhook URL**
     - **Validates: Requirements 9.1**
 
-  - [ ] 9.3 Implement `WebhookController` and `WebhookService`
+  - [x] 9.3 Implement `WebhookController` and `WebhookService`
     - `POST /commerce/webhooks/ucp/orders` — extract `merchant_id`; call `WebhookVerificationService.verifyWebhook()`; return 401 on failure
     - Check `orders.webhook_events` for duplicate `event_id`; if duplicate return 200 without reprocessing
     - Insert `webhook_events` record with `status = queued`, `signature_verified = true`; enqueue to BullMQ `webhook-ingestion` queue; return 200 within 2 seconds
@@ -305,7 +305,7 @@ Tasks are ordered by dependency: app scaffold → UcpClientModule → CheckoutMo
     - **Property 27: Webhook response latency**
     - **Validates: Requirements 9.7**
 
-  - [ ] 9.6 Implement BullMQ consumers for webhook-driven order updates
+  - [x] 9.6 Implement BullMQ consumers for webhook-driven order updates
     - Consume `webhook-ingestion` queue; parse UCP order payload
     - Update `orders.orders`: append new fulfillment events to `fulfillment.events`, append new adjustments to `adjustments`, update `totals`, derive and update `status`
     - Write `order_status_history` and `audit_log` in the same transaction
@@ -320,11 +320,11 @@ Tasks are ordered by dependency: app scaffold → UcpClientModule → CheckoutMo
     - **Property 35: Merchant profile cache consistency**
     - **Validates: Requirements 15.1**
 
-- [ ] 10. Checkpoint — OrderModule
+- [x] 10. Checkpoint — OrderModule
   - Ensure all OrderModule tests pass. Ask the user if questions arise.
 
-- [ ] 11. Python ChatService — intent routing and feature flags
-  - [ ] 11.1 Extend `Intent_Classifier` with commerce intents
+- [x] 11. Python ChatService — intent routing and feature flags
+  - [x] 11.1 Extend `Intent_Classifier` with commerce intents
     - Add intent recognition for: `checkout_initiate`, `add_to_cart`, `remove_from_cart`, `view_cart`, `order_status`, `order_history`, `cancel_order` in `backend/app/services/chat_service.py`
     - Add slot extraction for `product_id`, `quantity`, `buyer` (name, email), `context` (address hints), `payment_instrument`
     - Re-prompt customer for missing required slots before forwarding
@@ -332,13 +332,13 @@ Tasks are ordered by dependency: app scaffold → UcpClientModule → CheckoutMo
     - When commerce service returns `requires_escalation`, format the `continue_url` as a clickable link in the chat response
     - _Requirements: 11.1, 20.1, 20.2, 20.3, 20.4, 20.5_
 
-  - [ ] 11.2 Integrate LaunchDarkly feature flag evaluation
+  - [x] 11.2 Integrate LaunchDarkly feature flag evaluation
     - Add LaunchDarkly SDK to `backend/` dependencies
     - Evaluate flag before routing any commerce intent; default to disabled when LaunchDarkly is unreachable
     - Return graceful "feature currently unavailable" response when flag is off
     - _Requirements: 17.1, 17.2, 17.3, 17.4, 17.5_
 
-  - [ ] 11.3 Wire ChatService HTTP calls to `checkout-order-service/`
+  - [x] 11.3 Wire ChatService HTTP calls to `checkout-order-service/`
     - Add `CommerceClient` in `backend/app/clients/commerce_client.py` with methods for each commerce intent
     - Base URL: `http://checkout-order-service:3001` (configurable via `COMMERCE_SERVICE_URL` env var)
     - Propagate `X-Request-ID` through all downstream calls
@@ -349,14 +349,14 @@ Tasks are ordered by dependency: app scaffold → UcpClientModule → CheckoutMo
   - [ ]* 11.4 Write unit tests for intent routing and slot filling
     - _Requirements: 11.1, 11.2, 20.1, 20.2_
 
-- [ ] 12. RAG pipeline extension for order history
-  - [ ] 12.1 Extend RAG indexing pipeline to include order embeddings
+- [x] 12. RAG pipeline extension for order history
+  - [x] 12.1 Extend RAG indexing pipeline to include order embeddings
     - Add order embedding indexer in `rag-service/` that consumes `order.confirmed` and order status change events
     - Index order records as user-scoped embeddings keyed by `customer_id`
     - Trigger re-indexing within 5 minutes of any order status change
     - _Requirements: 12.1, 12.3_
 
-  - [ ] 12.2 Enforce customer-scoped retrieval for order embeddings
+  - [x] 12.2 Enforce customer-scoped retrieval for order embeddings
     - Modify RAG retrieval query to always include `customer_id` scope filter
     - Ensure order embeddings from customer A are never returned in a query scoped to customer B
     - _Requirements: 12.2, 12.4_
@@ -364,31 +364,31 @@ Tasks are ordered by dependency: app scaffold → UcpClientModule → CheckoutMo
   - [ ]* 12.3 Write unit tests for RAG order embedding isolation
     - _Requirements: 12.3, 12.4_
 
-- [ ] 13. Frontend — order tracker and escalation handoff
-  - [ ] 13.1 Create `OrderTracker` component in `Frontend/components/`
+- [x] 13. Frontend — order tracker and escalation handoff
+  - [x] 13.1 Create `OrderTracker` component in `Frontend/components/`
     - Display order status, fulfillment events timeline, and adjustments
     - Accepts `orderId` prop; fetches from `GET /commerce/orders/:id`
     - Render `permalink_url` as a link to the merchant's order page when available
     - _Requirements: 7.1, 7.2, 7.3_
 
-  - [ ] 13.2 Handle `requires_escalation` in chat UI
+  - [x] 13.2 Handle `requires_escalation` in chat UI
     - When ChatService returns a `continue_url`, render it as a prominent call-to-action button in the chat message
     - _Requirements: 2.3_
 
   - [ ]* 13.3 Write unit tests for OrderTracker
     - _Requirements: 7.3_
 
-- [ ] 14. Final checkpoint — end-to-end integration
-  - [ ] 14.1 Write E2E integration test for full checkout flow
+- [x] 14. Final checkpoint — end-to-end integration
+  - [x] 14.1 Write E2E integration test for full checkout flow
     - Simulate `checkout_initiate` → session create → update → `ready_for_complete` → complete → `order.confirmed` event → order appears in `GET /commerce/orders`
     - Use Dockerised PostgreSQL and Redis; mock merchant UCP endpoint via nock
     - _Requirements: 1.1, 2.1, 3.1, 5.1, 6.1_
 
-  - [ ] 14.2 Write E2E test for `requires_escalation` flow
+  - [x] 14.2 Write E2E test for `requires_escalation` flow
     - Simulate merchant returning `requires_escalation`; assert `continue_url` is returned to caller and no Complete Checkout call is made
     - _Requirements: 2.3_
 
-  - [ ] 14.3 Validate health endpoint and trace propagation
+  - [x] 14.3 Validate health endpoint and trace propagation
     - Confirm `GET /commerce/health` returns 200 with correct dependency status
     - Confirm `X-Request-ID` propagation through ChatService → `checkout-order-service/`
     - _Requirements: 14.1, 14.2, 14.5_
