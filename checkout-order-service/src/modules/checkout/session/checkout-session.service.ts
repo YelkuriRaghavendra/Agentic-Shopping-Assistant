@@ -31,31 +31,71 @@ export class CheckoutSessionService {
     buyer?: UcpBuyer,
     context?: UcpContext,
   ): Promise<CheckoutSession> {
-    const idempotencyKey = randomUUID();
+    const skipUcp = process.env.SKIP_UCP_OUTBOUND === 'true';
 
-    const ucpResponse = await this.ucpCheckoutClient.createCheckoutSession(
-      merchantId,
-      { line_items: lineItems, buyer, context },
-      idempotencyKey,
-    );
+    let ucpCheckoutId: string;
+    let ucpStatus = UcpCheckoutStatus.INCOMPLETE;
+    let paymentHandlers: string[] | null = null;
+    let totalsSnapshot = null;
+    let expiresAt: Date | null = null;
+    let continueUrl: string | null = null;
+
+    if (skipUcp) {
+      // Local dev mode: skip outbound UCP call to avoid self-referencing loop
+      ucpCheckoutId = randomUUID();
+      ucpStatus = UcpCheckoutStatus.REQUIRES_ESCALATION;
+      paymentHandlers = ['card', 'upi'];
+      // Calculate totals locally
+      const subtotalCents = lineItems.reduce(
+        (sum, li) => sum + (li.item.price ?? 0) * (li.quantity ?? 1),
+        0,
+      );
+      totalsSnapshot = {
+        subtotal_cents: subtotalCents,
+        tax_cents: 0,
+        grand_total_cents: subtotalCents,
+      };
+      // continue_url will be set after save (need sessionId from DB)
+      this.logger.log(`Local dev mode: created local session ${ucpCheckoutId}`);
+    } else {
+      const idempotencyKey = randomUUID();
+      const ucpResponse = await this.ucpCheckoutClient.createCheckoutSession(
+        merchantId,
+        { line_items: lineItems, buyer, context },
+        idempotencyKey,
+      );
+      ucpCheckoutId = ucpResponse.id;
+      ucpStatus = (ucpResponse.status as UcpCheckoutStatus) ?? UcpCheckoutStatus.INCOMPLETE;
+      paymentHandlers = ucpResponse.payment_handlers ?? null;
+      totalsSnapshot = ucpResponse.totals ?? null;
+      expiresAt = ucpResponse.expires_at ? new Date(ucpResponse.expires_at) : null;
+      continueUrl = ucpResponse.continue_url ?? null;
+    }
 
     const session = this.sessionRepo.create({
       merchantId,
       customerId,
-      ucpCheckoutId: ucpResponse.id,
-      ucpStatus: (ucpResponse.status as UcpCheckoutStatus) ?? UcpCheckoutStatus.INCOMPLETE,
+      ucpCheckoutId,
+      ucpStatus,
       lineItemsSnapshot: lineItems,
       buyerSnapshot: buyer ?? null,
       contextSnapshot: context ?? null,
-      paymentHandlers: ucpResponse.payment_handlers ?? null,
-      totalsSnapshot: ucpResponse.totals ?? null,
-      expiresAt: ucpResponse.expires_at ? new Date(ucpResponse.expires_at) : null,
-      continueUrl: ucpResponse.continue_url ?? null,
+      paymentHandlers,
+      totalsSnapshot,
+      expiresAt,
+      continueUrl,
     });
 
     await this.sessionRepo.save(session);
 
-    await this.reactToStatus(session, UcpCheckoutStatus.INCOMPLETE, ucpResponse.status as UcpCheckoutStatus, null);
+    // In local dev, set continue_url using the real sessionId from DB
+    if (skipUcp) {
+      const platformBase = process.env.PLATFORM_BASE_URL ?? 'http://localhost:3001';
+      session.continueUrl = `${platformBase}/commerce/checkout-sessions/${session.sessionId}/summary`;
+      await this.sessionRepo.save(session);
+    } else {
+      await this.reactToStatus(session, UcpCheckoutStatus.INCOMPLETE, ucpStatus, null);
+    }
 
     return session;
   }
@@ -99,21 +139,29 @@ export class CheckoutSessionService {
     const session = await this.loadSession(sessionId);
     this.assertNotCanceled(session);
 
-    const idempotencyKey = randomUUID();
-
-    const ucpResponse = await this.ucpCheckoutClient.completeCheckoutSession(
-      session.merchantId,
-      session.ucpCheckoutId!,
-      { payment_instrument: paymentInstrument },
-      idempotencyKey,
-    );
-
+    const skipUcp = process.env.SKIP_UCP_OUTBOUND === 'true';
     const fromStatus = session.ucpStatus;
-    session.ucpStatus = ucpResponse.status as UcpCheckoutStatus;
-    session.totalsSnapshot = ucpResponse.totals ?? session.totalsSnapshot;
 
-    await this.sessionRepo.save(session);
-    await this.reactToStatus(session, fromStatus, ucpResponse.status as UcpCheckoutStatus, paymentInstrument);
+    if (skipUcp) {
+      // Local dev mode: mark as completed directly
+      session.ucpStatus = UcpCheckoutStatus.COMPLETED;
+      session.ucpOrderId = randomUUID();
+      await this.sessionRepo.save(session);
+      await this.handleCompleted(session);
+      this.logger.log(`Local dev mode: completed session ${sessionId}, order ${session.ucpOrderId}`);
+    } else {
+      const idempotencyKey = randomUUID();
+      const ucpResponse = await this.ucpCheckoutClient.completeCheckoutSession(
+        session.merchantId,
+        session.ucpCheckoutId!,
+        { payment_instrument: paymentInstrument },
+        idempotencyKey,
+      );
+      session.ucpStatus = ucpResponse.status as UcpCheckoutStatus;
+      session.totalsSnapshot = ucpResponse.totals ?? session.totalsSnapshot;
+      await this.sessionRepo.save(session);
+      await this.reactToStatus(session, fromStatus, ucpResponse.status as UcpCheckoutStatus, paymentInstrument);
+    }
 
     return session;
   }

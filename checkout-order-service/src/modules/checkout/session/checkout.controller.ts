@@ -5,11 +5,13 @@ import {
   Put,
   Param,
   Body,
+  Res,
   UsePipes,
   ValidationPipe,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { CheckoutSessionService } from './checkout-session.service';
 import { CreateCheckoutSessionDto } from './dto/create-checkout-session.dto';
 import { UpdateCheckoutSessionDto } from './dto/update-checkout-session.dto';
@@ -29,7 +31,7 @@ function centsToDisplay(cents: number): string {
   return (cents / 100).toFixed(2);
 }
 
-@Controller('commerce/checkout/sessions')
+@Controller('commerce/checkout-sessions')
 @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
 export class CheckoutController {
   constructor(private readonly checkoutSessionService: CheckoutSessionService) {}
@@ -80,24 +82,102 @@ export class CheckoutController {
     return this.checkoutSessionService.cancelSession(id);
   }
 
-  /** GET /commerce/checkout/sessions/:id/summary — totals in display currency */
+  /** GET /commerce/checkout-sessions/:id/summary — checkout page */
   @Get(':id/summary')
-  async getSessionSummary(@Param('id') id: string): Promise<SummaryResponse> {
+  async getSessionSummary(@Param('id') id: string, @Res() res: Response): Promise<void> {
     const session = await this.checkoutSessionService.getSession(id);
     const totals: UcpTotals | null = session.totalsSnapshot;
+    const lineItems = session.lineItemsSnapshot ?? [];
 
     const subtotalCents = totals?.subtotal_cents ?? 0;
     const taxCents = totals?.tax_cents ?? 0;
     const grandTotalCents = totals?.grand_total_cents ?? 0;
-    // discount = subtotal + tax - grand_total (derived)
-    const discountCents = subtotalCents + taxCents - grandTotalCents;
 
-    return {
-      subtotal: centsToDisplay(subtotalCents),
-      discount: centsToDisplay(Math.max(0, discountCents)),
-      tax: centsToDisplay(taxCents),
-      grand_total: centsToDisplay(grandTotalCents),
-      currency: 'USD',
-    };
+    const itemsHtml = lineItems.map((li: any) => {
+      const item = li.item ?? {};
+      const title = item.title ?? 'Item';
+      const price = centsToDisplay(item.price ?? 0);
+      const qty = li.quantity ?? 1;
+      return `<tr><td>${title}</td><td>${qty}</td><td>₹${price}</td></tr>`;
+    }).join('');
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Checkout - Vik Rai</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0a0f1a; color: #e0e0e0; min-height: 100vh; display: flex; justify-content: center; align-items: center; }
+    .container { background: #141b2d; border-radius: 16px; padding: 40px; max-width: 500px; width: 90%; box-shadow: 0 8px 32px rgba(0,0,0,0.4); }
+    h1 { color: #00d4aa; font-size: 24px; margin-bottom: 8px; }
+    .subtitle { color: #888; font-size: 14px; margin-bottom: 24px; }
+    .session-id { color: #666; font-size: 11px; word-break: break-all; }
+    table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+    th { text-align: left; padding: 8px 0; color: #888; font-size: 12px; text-transform: uppercase; border-bottom: 1px solid #2a3444; }
+    td { padding: 12px 0; border-bottom: 1px solid #1e2738; }
+    .totals { margin-top: 16px; padding-top: 16px; border-top: 2px solid #00d4aa; }
+    .total-row { display: flex; justify-content: space-between; padding: 6px 0; }
+    .grand-total { font-size: 20px; font-weight: bold; color: #00d4aa; }
+    .btn { display: block; width: 100%; padding: 14px; margin-top: 24px; background: #00d4aa; color: #0a0f1a; border: none; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer; text-align: center; }
+    .btn:hover { background: #00b894; }
+    .btn-secondary { background: transparent; border: 1px solid #2a3444; color: #888; margin-top: 8px; }
+    .btn-secondary:hover { border-color: #00d4aa; color: #00d4aa; }
+    .status { display: inline-block; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600; background: #1a3a2a; color: #00d4aa; margin-bottom: 16px; }
+    .success { display: none; text-align: center; padding: 40px 0; }
+    .success h2 { color: #00d4aa; margin-bottom: 8px; }
+    .checkmark { font-size: 48px; margin-bottom: 16px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div id="checkout-form">
+      <h1>Checkout</h1>
+      <p class="subtitle">Complete your purchase</p>
+      <span class="status">${session.ucpStatus}</span>
+      <table>
+        <thead><tr><th>Item</th><th>Qty</th><th>Price</th></tr></thead>
+        <tbody>${itemsHtml}</tbody>
+      </table>
+      <div class="totals">
+        <div class="total-row"><span>Subtotal</span><span>₹${centsToDisplay(subtotalCents)}</span></div>
+        <div class="total-row"><span>Tax</span><span>₹${centsToDisplay(taxCents)}</span></div>
+        <div class="total-row grand-total"><span>Total</span><span>₹${centsToDisplay(grandTotalCents)}</span></div>
+      </div>
+      <button class="btn" onclick="completePurchase()">Complete Purchase</button>
+      <button class="btn btn-secondary" onclick="window.close()">Cancel</button>
+    </div>
+    <div id="success" class="success">
+      <div class="checkmark">✓</div>
+      <h2>Order Confirmed!</h2>
+      <p>Your order has been placed successfully.</p>
+      <p class="session-id" style="margin-top: 16px;">Order ID: ${id}</p>
+      <button class="btn" onclick="window.close()" style="margin-top: 24px;">Close</button>
+    </div>
+  </div>
+  <script>
+    async function completePurchase() {
+      try {
+        const res = await fetch('/commerce/checkout-sessions/${id}/complete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ payment_instrument: { type: 'card', last4: '4242' } }),
+        });
+        if (res.ok) {
+          document.getElementById('checkout-form').style.display = 'none';
+          document.getElementById('success').style.display = 'block';
+        } else {
+          alert('Payment failed. Please try again.');
+        }
+      } catch (e) {
+        alert('Something went wrong. Please try again.');
+      }
+    }
+  </script>
+</body>
+</html>`;
+
+    res.type('text/html').send(html);
   }
 }

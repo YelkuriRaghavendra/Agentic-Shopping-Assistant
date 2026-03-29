@@ -29,6 +29,8 @@ export class PlatformProfileController {
     const publicJwk = await this.getPublicSigningKey()
 
     return {
+      checkout_base_url: `${platformBaseUrl}/commerce`,
+      payment_handlers: ['card', 'upi'],
       capabilities: [
         {
           namespace: 'dev.ucp.shopping.order',

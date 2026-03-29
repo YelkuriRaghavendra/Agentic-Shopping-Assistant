@@ -85,10 +85,15 @@ HISTORY_TOKEN_BUDGET = 800
 
 # Keyword → commerce intent mapping (evaluated before LLM tool-calling)
 _COMMERCE_INTENT_MAP: list[tuple[list[str], str]] = [
-    (["checkout", "check out", "place order", "place my order", "buy now", "proceed to checkout",
-      "place the order", "i want to buy", "i'd like to buy", "i would like to buy",
-      "purchase this", "purchase it", "buy this", "buy it", "complete my purchase",
-      "complete the purchase", "complete purchase", "finalize", "finalise"], "checkout_initiate"),
+    (["checkout", "check out", "place order", "place my order", "buy now",
+      "proceed to checkout", "proceed to payment", "proceed with payment",
+      "proceed with purchase", "place the order",
+      "purchase this", "purchase it", "buy this", "buy it",
+      "complete my purchase", "complete the purchase", "complete purchase",
+      "confirm my purchase", "confirm purchase", "confirm the purchase",
+      "confirm my order", "confirm order",
+      "finalize", "finalise", "make the purchase",
+      "pay for this", "payment for the", "i want to pay for"], "checkout_initiate"),
     (["add to cart", "add to my cart", "put in cart", "put it in", "add it", "add this",
       "i want to add", "add the"], "add_to_cart"),
     (["remove from cart", "take out of cart", "delete from cart", "remove it", "take it out"], "remove_from_cart"),
@@ -120,6 +125,47 @@ _SLOT_PROMPTS: dict[str, str] = {
 }
 
 
+# Phrases that signal purchase intent but need a specific product reference
+# (e.g. "i want to buy the adidas shoe" → checkout, "i want to buy shoes" → search)
+_PURCHASE_INTENT_PHRASES = [
+    "i want to buy",
+    "i'd like to buy",
+    "i would like to buy",
+    "i want to purchase",
+    "i'd like to purchase",
+    "i would like to purchase",
+    "i want to order",
+    "i'd like to order",
+    "i would like to order",
+]
+
+# Generic category words that indicate browsing, not checkout
+_BROWSE_CATEGORY_WORDS = {
+    "shoes", "shoe", "sneakers", "boots", "sandals", "slippers",
+    "shirts", "shirt", "pants", "jeans", "jacket", "jackets",
+    "clothes", "clothing", "apparel", "dress", "dresses",
+    "something", "anything", "some", "a few", "options",
+}
+
+
+def _is_specific_product_reference(msg: str, phrase: str) -> bool:
+    """Check if text after the purchase phrase references a specific product (not a category)."""
+    after = msg[msg.index(phrase) + len(phrase):].strip()
+    if not after:
+        return False
+    # "i want to buy the adidas..." → specific product
+    if after.startswith("the ") or after.startswith("this ") or after.startswith("that "):
+        return True
+    # Check first meaningful word — if it's a generic category, it's browsing
+    first_word = after.split()[0].rstrip(".,!?") if after.split() else ""
+    if first_word in _BROWSE_CATEGORY_WORDS:
+        return False
+    # If there are 3+ words after the phrase, likely a specific product name
+    if len(after.split()) >= 3:
+        return True
+    return False
+
+
 def _classify_commerce_intent(message: str) -> str | None:
     """
     Keyword-based commerce intent classifier.
@@ -127,9 +173,35 @@ def _classify_commerce_intent(message: str) -> str | None:
     Zero LLM cost.
     """
     msg = message.lower()
+
+    # First check the explicit keyword map
     for keywords, intent in _COMMERCE_INTENT_MAP:
-        if any(kw in msg for kw in keywords):
+        matched = [kw for kw in keywords if kw in msg]
+        if matched:
+            logger.info(
+                "commerce_intent.classified",
+                intent=intent,
+                matched_keywords=matched,
+                message_preview=msg[:80],
+            )
             return intent
+
+    # Then check ambiguous purchase phrases — only trigger if referencing a specific product
+    for phrase in _PURCHASE_INTENT_PHRASES:
+        if phrase in msg and _is_specific_product_reference(msg, phrase):
+            logger.info(
+                "commerce_intent.classified",
+                intent="checkout_initiate",
+                matched_keywords=[phrase],
+                message_preview=msg[:80],
+                reason="specific_product_reference",
+            )
+            return "checkout_initiate"
+
+    logger.info(
+        "commerce_intent.no_match",
+        message_preview=msg[:80],
+    )
     return None
 
 
@@ -453,6 +525,30 @@ class ChatService:
             intent = self._guardrails.classify_intent(request.message)
             slots = self._extract_slots(request.message, slots)
             people = self._memory.extract_people_from_message(request.message)
+
+            # ── Commerce intent routing (feature-flag gated) ───────────
+            commerce_intent = _classify_commerce_intent(request.message)
+            if commerce_intent:
+                commerce_response = await self._handle_commerce_intent(
+                    commerce_intent=commerce_intent,
+                    message=request.message,
+                    session=session,
+                    request=request,
+                    slots=slots,
+                    t_start=t_start,
+                )
+                if commerce_response is not None:
+                    answer = commerce_response.answer or ""
+                    async for event in _stream_words(answer):
+                        yield event
+                    yield _sse({
+                        "type": "done",
+                        "message_id": str(commerce_response.message_id) if commerce_response.message_id else "",
+                        "answer_html": answer,
+                        "cited_products": commerce_response.cited_products or [],
+                        "suggestions": commerce_response.suggestions or [],
+                    })
+                    return
 
             skill_ctx = SkillContext(
                 message=request.message, intent=intent, slots=slots,
@@ -1035,20 +1131,28 @@ class ChatService:
         if order_id_match:
             slots["order_id"] = order_id_match.group(1)
 
-        # Extract quantity — "2 pairs", "3 items", "one", etc.
-        qty_match = re.search(
-            r'\b(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\b', msg
-        )
-        if qty_match:
-            word_to_num = {
-                "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
-                "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
-            }
-            raw = qty_match.group(1)
-            slots["quantity"] = word_to_num.get(raw, int(raw) if raw.isdigit() else 1)
+        # Extract quantity — only when number appears in a quantity context
+        # e.g. "2 pairs", "buy 3", "quantity 5", "add 2 of", "one pair"
+        # Avoids matching numbers in product names like "Adispree 5.0 M"
+        word_to_num = {
+            "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+            "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+        }
+        qty_patterns = [
+            r'(?:buy|add|order|get|want)\s+(\d+)\b',  # "buy 3", "add 2"
+            r'(\d+)\s+(?:pair|pairs|item|items|piece|pieces|unit|units|of\s)',  # "2 pairs"
+            r'quantity\s*[:=]?\s*(\d+)',  # "quantity: 3"
+            r'\b(one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:pair|pairs|item|items|piece|pieces)',
+        ]
+        for pattern in qty_patterns:
+            qty_match = re.search(pattern, msg)
+            if qty_match:
+                raw = qty_match.group(1)
+                slots["quantity"] = word_to_num.get(raw, int(raw) if raw.isdigit() else 1)
+                break
 
         # Resolve product reference via RAG if needed
-        if intent in ("add_to_cart", "remove_from_cart") and "product_id" not in slots:
+        if intent in ("add_to_cart", "remove_from_cart", "checkout_initiate") and "product_id" not in slots:
             # Check for ambiguous references ("the blue one", "that item", "it")
             ambiguous_patterns = [
                 r'\bthe\s+\w+\s+one\b',
@@ -1064,7 +1168,7 @@ class ChatService:
             )
             if product_match:
                 slots["product_id"] = product_match.group(1)
-            elif is_ambiguous or intent == "add_to_cart":
+            elif is_ambiguous or intent in ("add_to_cart", "checkout_initiate"):
                 # Resolve via RAG — use the message as the search query
                 chunks = await self._rag.retrieve(
                     query=message,
@@ -1074,7 +1178,14 @@ class ChatService:
                 )
                 if chunks:
                     slots["product_id"] = chunks[0].product_id
-                    slots["_resolved_product_name"] = chunks[0].content[:80]
+                    # Extract clean product name from RAG content
+                    raw = chunks[0].content
+                    name_match = re.search(r'Product_name:\s*(.+?)(?:\n|$)', raw)
+                    if name_match:
+                        slots["_resolved_product_name"] = name_match.group(1).strip()
+                    else:
+                        # Fallback: use title or first 80 chars
+                        slots["_resolved_product_name"] = getattr(chunks[0], 'title', raw[:80])
 
         # For checkout_initiate, line_items come from the session context (cart)
         # OR from a product resolved via RAG in this same message
@@ -1156,9 +1267,16 @@ class ChatService:
             )
 
         elif intent == "checkout_initiate":
+            line_items = slots.get("line_items", [])
+            if not line_items:
+                # No items to checkout — ask the user to pick a product first
+                return CommerceResponse(
+                    success=True,
+                    data={"message": "no_items_to_checkout"},
+                )
             return await self._commerce.create_checkout_session(
                 customer_id=customer_id,
-                line_items=slots.get("line_items", []),
+                line_items=line_items,
                 buyer={"email": slots["buyer_email"]} if slots.get("buyer_email") else None,
                 request_id=request_id,
             )
@@ -1249,14 +1367,35 @@ class ChatService:
             return f"Here's what's in your cart:\n{summary}\n\nSubtotal: ${subtotal:.2f}"
 
         elif intent == "checkout_initiate":
-            status = data.get("ucp_status", data.get("status", ""))
-            session_id = data.get("session_id", "")
-            if status == "incomplete":
+            if data.get("message") == "no_items_to_checkout":
                 return (
-                    "I've started your checkout. "
-                    "Please provide your shipping address to continue."
+                    "You don't have any items to checkout yet. "
+                    "Would you like me to help you find a product first?"
                 )
-            return f"Checkout session created (status: {status})."
+            status = (
+                data.get("ucpStatus")
+                or data.get("ucp_status")
+                or data.get("status", "")
+            )
+            session_id = data.get("sessionId") or data.get("session_id", "")
+            line_items = data.get("lineItemsSnapshot") or data.get("line_items_snapshot", [])
+            totals = data.get("totalsSnapshot") or data.get("totals_snapshot", {})
+
+            if status == "incomplete":
+                # Build a nice summary of what's being purchased
+                items_desc = []
+                for li in line_items:
+                    item = li.get("item", {})
+                    title = item.get("title", "Item")
+                    qty = li.get("quantity", 1)
+                    items_desc.append(f"{title} × {qty}")
+                items_summary = ", ".join(items_desc) if items_desc else "your selected items"
+                grand_total = totals.get("grand_total_cents", 0)
+                return (
+                    f"I've started your checkout for {items_summary}. "
+                    "Please provide your shipping address and payment details to complete your purchase."
+                )
+            return f"Checkout session created successfully! Your session ID is {session_id}."
 
         elif intent == "order_status":
             status = data.get("status", "unknown")

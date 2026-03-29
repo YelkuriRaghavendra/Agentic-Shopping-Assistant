@@ -55,7 +55,7 @@ class FeatureFlagService:
 
     def __init__(self) -> None:
         self._client = None
-        self._sdk_key = os.environ.get("LAUNCHDARKLY_SDK_KEY", "")
+        self._sdk_key = os.environ.get("LAUNCHDARKLY_SDK_KEY", "True")
         self._initialized = False
         self._init_client()
 
