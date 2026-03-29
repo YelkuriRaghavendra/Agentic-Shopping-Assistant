@@ -487,7 +487,9 @@ class ChatService:
         t_start = time.monotonic()
 
         def _sse(data: dict) -> str:
-            return f"data: {json.dumps(data)}\n\n"
+            # SSE requires single-line data — ensure no newlines in JSON
+            json_str = json.dumps(data, default=str, ensure_ascii=False)
+            return f"data: {json_str}\n\n"
 
         async def _stream_words(text: str):
             """Yield text word-by-word with small delays for typewriter effect."""
@@ -541,13 +543,34 @@ class ChatService:
                     answer = commerce_response.answer or ""
                     async for event in _stream_words(answer):
                         yield event
-                    yield _sse({
+                    # Serialize Pydantic models to dicts
+                    cited = [
+                        p.model_dump() if hasattr(p, 'model_dump') else p
+                        for p in (commerce_response.cited_products or [])
+                    ]
+                    suggestions = [
+                        s.model_dump() if hasattr(s, 'model_dump') else s
+                        for s in (commerce_response.suggestions or [])
+                    ]
+                    done_event: dict = {
                         "type": "done",
                         "message_id": str(commerce_response.message_id) if commerce_response.message_id else "",
                         "answer_html": answer,
-                        "cited_products": commerce_response.cited_products or [],
-                        "suggestions": commerce_response.suggestions or [],
-                    })
+                        "cited_products": cited,
+                        "suggestions": suggestions,
+                    }
+                    if commerce_response.continue_url:
+                        done_event["continue_url"] = commerce_response.continue_url
+                    if commerce_response.checkout_data:
+                        done_event["checkout_data"] = commerce_response.checkout_data
+                    logger.info(
+                        "stream.commerce_done",
+                        has_checkout_data=bool(commerce_response.checkout_data),
+                        has_continue_url=bool(commerce_response.continue_url),
+                        checkout_session_id=commerce_response.checkout_data.get("checkout_session_id") if commerce_response.checkout_data else None,
+                        done_event_keys=list(done_event.keys()),
+                    )
+                    yield _sse(done_event)
                     return
 
             skill_ctx = SkillContext(
@@ -1108,7 +1131,32 @@ class ChatService:
 
         # ── Format response ───────────────────────────────────────────────
         answer = self._format_commerce_response(commerce_intent, service_response)
-        return await self._direct_response(session, request, answer, commerce_intent, t_start)
+        response = await self._direct_response(session, request, answer, commerce_intent, t_start)
+
+        # Attach checkout metadata for the frontend
+        if service_response.requires_escalation and service_response.continue_url:
+            response.continue_url = service_response.continue_url
+        if service_response.data:
+            checkout_data = {}
+            line_items = (
+                service_response.data.get("lineItemsSnapshot")
+                or service_response.data.get("line_items_snapshot", [])
+            )
+            totals = (
+                service_response.data.get("totalsSnapshot")
+                or service_response.data.get("totals_snapshot", {})
+            )
+            session_id = (
+                service_response.data.get("sessionId")
+                or service_response.data.get("session_id", "")
+            )
+            if line_items or totals:
+                checkout_data["line_items"] = line_items
+                checkout_data["totals"] = totals
+                checkout_data["checkout_session_id"] = session_id
+                response.checkout_data = checkout_data
+
+        return response
 
     async def _extract_commerce_slots(
         self,
@@ -1315,11 +1363,23 @@ class ChatService:
         Format a CommerceResponse into a natural language reply.
         When requires_escalation, format continue_url as a clickable markdown link.
         """
-        # Handle requires_escalation — surface continue_url as a clickable link
-        if response.requires_escalation and response.continue_url:
+        # Handle requires_escalation — the frontend will show the checkout modal
+        if response.requires_escalation:
+            data = response.data or {}
+            line_items = (
+                data.get("lineItemsSnapshot")
+                or data.get("line_items_snapshot", [])
+            )
+            items_desc = []
+            for li in line_items:
+                item = li.get("item", {})
+                title = item.get("title", "Item")
+                qty = li.get("quantity", 1)
+                items_desc.append(f"{title} x {qty}")
+            items_summary = ", ".join(items_desc) if items_desc else "your selected items"
             return (
-                "To complete your checkout, please visit the merchant's secure checkout page: "
-                f"[Complete your checkout here]({response.continue_url})"
+                f"Great! I've prepared your checkout for {items_summary}. "
+                "Click the button below to complete your purchase with shipping and payment details."
             )
 
         if not response.success:

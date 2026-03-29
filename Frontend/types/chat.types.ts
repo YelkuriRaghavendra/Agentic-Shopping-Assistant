@@ -104,6 +104,17 @@ export interface MessageHistoryResponse {
 
 // ── UI-only types ─────────────────────────────────────────────────────────
 
+export interface CheckoutLineItem {
+  item: { id: string; title: string; price: number };
+  quantity: number;
+}
+
+export interface CheckoutData {
+  line_items: CheckoutLineItem[];
+  totals: { subtotal_cents: number; tax_cents: number; grand_total_cents: number };
+  checkout_session_id: string;
+}
+
 export interface ChatMessageUI {
   id: string;
   role: MessageRole;
@@ -114,4 +125,5 @@ export interface ChatMessageUI {
   suggestions?: SuggestionChip[];
   streamDone?: boolean;
   continueUrl?: string;
+  checkoutData?: CheckoutData;
 }
