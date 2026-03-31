@@ -500,120 +500,40 @@ class ChatService:
                 await asyncio.sleep(0.02)
 
         # ── Steps 1-8: same as non-streaming handle ──────────────────────
+        # Send an initial heartbeat immediately so the client knows the connection is alive,
+        # then continue sending heartbeats during the slow setup phase.
+        yield ": heartbeat\n\n"
         try:
-            await self._rate_limiter.check(request.customer_id)
-            session = await self._resolve_session(request)
-            await self._check_session_health(session)
-
-            customer_profile, conversation = await asyncio.gather(
-                self._memory.load_customer_profile(session.customer_id),
-                self._load_history(session),
-            )
-            slots = self._memory.load_slots(session)
-            shown_products = self._memory.load_shown_products(session)
-
-            if session.message_count == 0 and customer_profile:
-                slots = self._memory.prefill_slots_from_profile(slots, customer_profile)
-
-            guard = self._guardrails.check_input(request.message)
-            if not guard.passed:
-                safe = guard.safe_response or "I can only help with shopping-related questions."
-                async for event in _stream_words(safe):
-                    yield event
-                yield _sse({"type": "done", "message_id": "", "answer_html": safe,
-                            "cited_products": [], "suggestions": []})
-                return
-
-            intent = self._guardrails.classify_intent(request.message)
-            slots = self._extract_slots(request.message, slots)
-            people = self._memory.extract_people_from_message(request.message)
-
-            # ── Commerce intent routing (feature-flag gated) ───────────
-            commerce_intent = _classify_commerce_intent(request.message)
-            if commerce_intent:
-                commerce_response = await self._handle_commerce_intent(
-                    commerce_intent=commerce_intent,
-                    message=request.message,
-                    session=session,
-                    request=request,
-                    slots=slots,
-                    t_start=t_start,
-                )
-                if commerce_response is not None:
-                    answer = commerce_response.answer or ""
-                    async for event in _stream_words(answer):
-                        yield event
-                    # Serialize Pydantic models to dicts
-                    cited = [
-                        p.model_dump() if hasattr(p, 'model_dump') else p
-                        for p in (commerce_response.cited_products or [])
-                    ]
-                    suggestions = [
-                        s.model_dump() if hasattr(s, 'model_dump') else s
-                        for s in (commerce_response.suggestions or [])
-                    ]
-                    done_event: dict = {
-                        "type": "done",
-                        "message_id": str(commerce_response.message_id) if commerce_response.message_id else "",
-                        "answer_html": answer,
-                        "cited_products": cited,
-                        "suggestions": suggestions,
-                    }
-                    if commerce_response.continue_url:
-                        done_event["continue_url"] = commerce_response.continue_url
-                    if commerce_response.checkout_data:
-                        done_event["checkout_data"] = commerce_response.checkout_data
-                    logger.info(
-                        "stream.commerce_done",
-                        has_checkout_data=bool(commerce_response.checkout_data),
-                        has_continue_url=bool(commerce_response.continue_url),
-                        checkout_session_id=commerce_response.checkout_data.get("checkout_session_id") if commerce_response.checkout_data else None,
-                        done_event_keys=list(done_event.keys()),
-                    )
-                    yield _sse(done_event)
-                    return
-
-            skill_ctx = SkillContext(
-                message=request.message, intent=intent, slots=slots,
-                customer_profile=customer_profile,
-                session_context=session.context or {},
-                turn_count=session.message_count,
-            )
-            skill_result = self._skills.resolve(skill_ctx)
-
-            if skill_result.prompt_addon:
-                tool_system_prompt = TOOL_SELECTION_PROMPT + "\n\n" + skill_result.prompt_addon
-            else:
-                tool_system_prompt = TOOL_SELECTION_PROMPT
-            active_tools = TOOL_DEFINITIONS + skill_result.extra_tools
-
-            candidates = conversation.recent_turns[-6:]
-            budget = HISTORY_TOKEN_BUDGET
-            selected: list[dict] = []
-            for turn in reversed(candidates):
-                cost = len(turn["content"]) // 4
-                if budget - cost < 0 and len(selected) >= 2:
-                    break
-                selected.append(turn)
-                budget -= cost
-            llm_history = [{"role": t["role"], "content": t["content"]} for t in reversed(selected)]
-
-            tool_call: ToolCall = await self._llm.decide_tool(
-                system_prompt=tool_system_prompt,
-                user_message=request.message,
-                history=llm_history,
-                tools=active_tools,
-            )
-        except LLMError:
-            msg = "I'm having trouble right now. Please try again."
-            async for event in _stream_words(msg):
-                yield event
-            yield _sse({"type": "done", "message_id": "", "answer_html": "",
-                        "cited_products": [], "suggestions": []})
-            return
+            setup_task = asyncio.ensure_future(self._run_stream_setup(request, t_start))
+            while not setup_task.done():
+                await asyncio.sleep(5)
+                if not setup_task.done():
+                    yield ": heartbeat\n\n"
+            setup_result = await setup_task
         except Exception as exc:
             logger.error("stream.setup_failed", error=str(exc))
             yield _sse({"type": "error", "content": "Something went wrong. Please try again."})
+            return
+
+        # Unpack setup result
+        if setup_result.get("early_return"):
+            for event in setup_result["events"]:
+                yield event
+            return
+
+        session        = setup_result["session"]
+        conversation   = setup_result["conversation"]
+        slots          = setup_result["slots"]
+        shown_products = setup_result["shown_products"]
+        customer_profile = setup_result["customer_profile"]
+        intent         = setup_result["intent"]
+        people         = setup_result["people"]
+        llm_history    = setup_result["llm_history"]
+        tool_call      = setup_result["tool_call"]
+
+        if setup_result.get("commerce_events"):
+            for event in setup_result["commerce_events"]:
+                yield event
             return
 
         tool_name = tool_call.tool_name
@@ -639,8 +559,15 @@ class ChatService:
             return
 
         # ── Execute tool + build prompt ──────────────────────────────────
+        # Send SSE heartbeat comments every 5s while waiting for slow RAG/tool calls.
+        # This prevents proxy and browser timeouts from killing the connection.
         try:
-            tool_result = await self._tools.execute(tool_name, tool_args)
+            tool_task = asyncio.ensure_future(self._tools.execute(tool_name, tool_args))
+            while not tool_task.done():
+                await asyncio.sleep(5)
+                if not tool_task.done():
+                    yield ": heartbeat\n\n"
+            tool_result = await tool_task
             system_prompt, _, citation_map = self._prompt.build(
                 user_message=request.message,
                 history=conversation,
@@ -730,6 +657,125 @@ class ChatService:
             "suggestions": suggestions,
             "intent": intent,
         })
+
+    async def _run_stream_setup(self, request: "ChatRequest", t_start: float) -> dict:
+        """
+        Runs all blocking setup work for handle_stream in a single coroutine
+        so it can be awaited with a heartbeat loop around it.
+        Returns a dict with all needed state, or an early_return dict with pre-built events.
+        """
+        import json
+
+        def _sse(data: dict) -> str:
+            return f"data: {json.dumps(data, default=str, ensure_ascii=False)}\n\n"
+
+        async def _collect_stream_words(text: str) -> list[str]:
+            events = []
+            words = text.split(" ")
+            for i, word in enumerate(words):
+                token = word if i == 0 else " " + word
+                events.append(_sse({"type": "token", "content": token}))
+            return events
+
+        await self._rate_limiter.check(request.customer_id)
+        session = await self._resolve_session(request)
+        await self._check_session_health(session)
+
+        customer_profile, conversation = await asyncio.gather(
+            self._memory.load_customer_profile(session.customer_id),
+            self._load_history(session),
+        )
+        slots = self._memory.load_slots(session)
+        shown_products = self._memory.load_shown_products(session)
+
+        if session.message_count == 0 and customer_profile:
+            slots = self._memory.prefill_slots_from_profile(slots, customer_profile)
+
+        guard = self._guardrails.check_input(request.message)
+        if not guard.passed:
+            safe = guard.safe_response or "I can only help with shopping-related questions."
+            events = await _collect_stream_words(safe)
+            events.append(_sse({"type": "done", "message_id": "", "answer_html": safe,
+                                 "cited_products": [], "suggestions": []}))
+            return {"early_return": True, "events": events}
+
+        intent = self._guardrails.classify_intent(request.message)
+        slots = self._extract_slots(request.message, slots)
+        people = self._memory.extract_people_from_message(request.message)
+
+        commerce_intent = _classify_commerce_intent(request.message)
+        if commerce_intent:
+            commerce_response = await self._handle_commerce_intent(
+                commerce_intent=commerce_intent,
+                message=request.message,
+                session=session,
+                request=request,
+                slots=slots,
+                t_start=t_start,
+            )
+            if commerce_response is not None:
+                answer = commerce_response.answer or ""
+                events = await _collect_stream_words(answer)
+                cited = [p.model_dump() if hasattr(p, "model_dump") else p
+                         for p in (commerce_response.cited_products or [])]
+                suggestions = [s.model_dump() if hasattr(s, "model_dump") else s
+                               for s in (commerce_response.suggestions or [])]
+                done_event: dict = {
+                    "type": "done",
+                    "message_id": str(commerce_response.message_id) if commerce_response.message_id else "",
+                    "answer_html": answer,
+                    "cited_products": cited,
+                    "suggestions": suggestions,
+                }
+                if commerce_response.continue_url:
+                    done_event["continue_url"] = commerce_response.continue_url
+                if commerce_response.checkout_data:
+                    done_event["checkout_data"] = commerce_response.checkout_data
+                events.append(_sse(done_event))
+                return {"early_return": True, "events": events}
+
+        skill_ctx = SkillContext(
+            message=request.message, intent=intent, slots=slots,
+            customer_profile=customer_profile,
+            session_context=session.context or {},
+            turn_count=session.message_count,
+        )
+        skill_result = self._skills.resolve(skill_ctx)
+
+        tool_system_prompt = (TOOL_SELECTION_PROMPT + "\n\n" + skill_result.prompt_addon
+                              if skill_result.prompt_addon else TOOL_SELECTION_PROMPT)
+        active_tools = TOOL_DEFINITIONS + skill_result.extra_tools
+
+        candidates = conversation.recent_turns[-6:]
+        budget = HISTORY_TOKEN_BUDGET
+        selected: list[dict] = []
+        for turn in reversed(candidates):
+            cost = len(turn["content"]) // 4
+            if budget - cost < 0 and len(selected) >= 2:
+                break
+            selected.append(turn)
+            budget -= cost
+        llm_history = [{"role": t["role"], "content": t["content"]} for t in reversed(selected)]
+
+        tool_call: ToolCall = await self._llm.decide_tool(
+            system_prompt=tool_system_prompt,
+            user_message=request.message,
+            history=llm_history,
+            tools=active_tools,
+        )
+
+        return {
+            "early_return": False,
+            "session": session,
+            "conversation": conversation,
+            "slots": slots,
+            "shown_products": shown_products,
+            "customer_profile": customer_profile,
+            "intent": intent,
+            "people": people,
+            "llm_history": llm_history,
+            "tool_call": tool_call,
+        }
 
     async def _persist_shortcut(self, session, request, content, intent, t_start):
         """Persist messages for shortcut (non-streamed) responses."""
@@ -1234,6 +1280,10 @@ class ChatService:
                     else:
                         # Fallback: use title or first 80 chars
                         slots["_resolved_product_name"] = getattr(chunks[0], 'title', raw[:80])
+                    # Store price in paise (×100) from metadata
+                    raw_price = chunks[0].metadata.get("price")
+                    if raw_price is not None:
+                        slots["_resolved_product_price_paise"] = int(float(raw_price) * 100)
 
         # For checkout_initiate, line_items come from the session context (cart)
         # OR from a product resolved via RAG in this same message
@@ -1248,7 +1298,7 @@ class ChatService:
                     "item": {
                         "id": slots["product_id"],
                         "title": slots.get("_resolved_product_name", slots["product_id"]),
-                        "price": 1,  # placeholder — real price from merchant UCP endpoint
+                        "price": slots.get("_resolved_product_price_paise", 0),
                     },
                     "quantity": slots.get("quantity", 1),
                 }]
@@ -1275,7 +1325,7 @@ class ChatService:
                 "item": {
                     "id": slots["product_id"],
                     "title": slots.get("_resolved_product_name", slots["product_id"]),
-                    "price": 1,  # placeholder — real price comes from merchant UCP endpoint
+                    "price": slots.get("_resolved_product_price_paise", 0),
                 },
                 "quantity": slots.get("quantity", 1),
             }

@@ -84,6 +84,15 @@ export class CheckoutController {
     return this.checkoutSessionService.createOrGetPaymentIntent(id);
   }
 
+  /** POST /commerce/checkout/sessions/:id/payment-link — create a Stripe Payment Link */
+  @Post(':id/payment-link')
+  @HttpCode(HttpStatus.OK)
+  async createPaymentLink(
+    @Param('id') id: string,
+  ): Promise<{ url: string }> {
+    return this.checkoutSessionService.createPaymentLink(id);
+  }
+
   /** POST /commerce/checkout/sessions/:id/cancel — cancel session */
   @Post(':id/cancel')
   @HttpCode(HttpStatus.OK)

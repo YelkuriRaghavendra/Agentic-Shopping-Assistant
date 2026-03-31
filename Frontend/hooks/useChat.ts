@@ -228,14 +228,11 @@ export function useChat(
       setMessages((prev) => [...prev, botMessage]);
 
       setIsTyping(true);
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 30000);
       try {
         const res = await fetch(endpoints.chatStream, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
-          signal: controller.signal,
         });
 
         if (!res.ok || !res.body) {
@@ -374,7 +371,6 @@ export function useChat(
         setError(errorText);
         scrollToBottom();
       } finally {
-        clearTimeout(timeout);
         setIsTyping(false);
         setLoading(false);
       }
@@ -409,14 +405,11 @@ export function useChat(
       };
 
       setIsTyping(true);
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 30000);
       try {
         const res = await fetch(endpoints.chatStream, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
-          signal: controller.signal,
         });
         if (!res.ok || !res.body) {
           if (res.status === 429) {
@@ -525,7 +518,6 @@ export function useChat(
         setError(errorText);
         scrollToBottom();
       } finally {
-        clearTimeout(timeout);
         setIsTyping(false);
         setLoading(false);
       }

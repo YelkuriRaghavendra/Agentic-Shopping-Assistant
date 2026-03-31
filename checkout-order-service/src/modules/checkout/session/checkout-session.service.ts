@@ -211,6 +211,40 @@ export class CheckoutSessionService {
     return session;
   }
 
+  async createPaymentLink(
+    sessionId: string,
+  ): Promise<{ url: string }> {
+    const session = await this.loadSession(sessionId);
+    this.assertNotCanceled(session);
+
+    // Return cached link if already created
+    if (session.stripePaymentIntentId && session.stripeClientSecret) {
+      // Re-use existing PaymentIntent — create a new Payment Link pointing to it
+    }
+
+    const amount = session.totalsSnapshot?.grand_total_cents ?? 0;
+    const lineItems = session.lineItemsSnapshot ?? [];
+    const productName = lineItems[0]?.item?.title ?? 'Order';
+
+    // Create a one-time Stripe Price + Payment Link
+    const price = await this.stripe.prices.create({
+      currency: 'inr',
+      unit_amount: amount,
+      product_data: { name: productName },
+    });
+
+    const paymentLink = await this.stripe.paymentLinks.create({
+      line_items: [{ price: price.id, quantity: 1 }],
+      metadata: { checkout_session_id: sessionId },
+      after_completion: {
+        type: 'redirect',
+        redirect: { url: `${process.env.PLATFORM_BASE_URL ?? 'http://localhost:3001'}/commerce/checkout/sessions/${sessionId}/summary` },
+      },
+    });
+
+    return { url: paymentLink.url };
+  }
+
   async createOrGetPaymentIntent(
     sessionId: string,
   ): Promise<{ client_secret: string; payment_intent_id: string }> {

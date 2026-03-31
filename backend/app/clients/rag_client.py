@@ -107,7 +107,7 @@ class RAGClient(BaseHTTPClient):
             logger.warning(
                 "rag_client.retrieve_failed",
                 query=query[:50],
-                error=str(e),
+                error=str(e) or type(e).__name__,
             )
             return []
 
