@@ -31,7 +31,7 @@ function centsToDisplay(cents: number): string {
   return (cents / 100).toFixed(2);
 }
 
-@Controller('commerce/checkout-sessions')
+@Controller('commerce/checkout/sessions')
 @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
 export class CheckoutController {
   constructor(private readonly checkoutSessionService: CheckoutSessionService) {}
@@ -75,6 +75,15 @@ export class CheckoutController {
     return this.checkoutSessionService.completeSession(id, dto.payment_instrument);
   }
 
+  /** POST /commerce/checkout-sessions/:id/payment-intent — create or return existing Stripe PaymentIntent */
+  @Post(':id/payment-intent')
+  @HttpCode(HttpStatus.OK)
+  async createPaymentIntent(
+    @Param('id') id: string,
+  ): Promise<{ client_secret: string; payment_intent_id: string }> {
+    return this.checkoutSessionService.createOrGetPaymentIntent(id);
+  }
+
   /** POST /commerce/checkout/sessions/:id/cancel — cancel session */
   @Post(':id/cancel')
   @HttpCode(HttpStatus.OK)
@@ -82,9 +91,29 @@ export class CheckoutController {
     return this.checkoutSessionService.cancelSession(id);
   }
 
-  /** GET /commerce/checkout-sessions/:id/summary — checkout page */
+  /** GET /commerce/checkout/sessions/:id/summary — returns totals as JSON */
   @Get(':id/summary')
-  async getSessionSummary(@Param('id') id: string, @Res() res: Response): Promise<void> {
+  async getSessionSummary(@Param('id') id: string): Promise<SummaryResponse> {
+    const session = await this.checkoutSessionService.getSession(id);
+    const totals: UcpTotals | null = session.totalsSnapshot;
+
+    const subtotalCents = totals?.subtotal_cents ?? 0;
+    const taxCents = totals?.tax_cents ?? 0;
+    const grandTotalCents = totals?.grand_total_cents ?? 0;
+    const discountCents = Math.max(0, subtotalCents + taxCents - grandTotalCents);
+
+    return {
+      subtotal: centsToDisplay(subtotalCents),
+      tax: centsToDisplay(taxCents),
+      grand_total: centsToDisplay(grandTotalCents),
+      discount: centsToDisplay(discountCents),
+      currency: 'USD',
+    };
+  }
+
+  /** GET /commerce/checkout/sessions/:id/page — HTML checkout page */
+  @Get(':id/page')
+  async getSessionPage(@Param('id') id: string, @Res() res: Response): Promise<void> {
     const session = await this.checkoutSessionService.getSession(id);
     const totals: UcpTotals | null = session.totalsSnapshot;
     const lineItems = session.lineItemsSnapshot ?? [];
@@ -165,7 +194,7 @@ export class CheckoutController {
       btn.disabled = true;
       btn.textContent = 'Processing...';
       try {
-        const res = await fetch(BASE_URL + '/commerce/checkout-sessions/' + SESSION_ID + '/complete', {
+        const res = await fetch(BASE_URL + '/commerce/checkout/sessions/' + SESSION_ID + '/complete', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ payment_instrument: { type: 'card', last4: '4242' } }),
@@ -173,7 +202,6 @@ export class CheckoutController {
         if (res.ok) {
           document.getElementById('checkout-form').style.display = 'none';
           document.getElementById('success').style.display = 'block';
-          // Notify the parent window (chat UI) that checkout is complete
           if (window.opener) {
             window.opener.postMessage({ type: 'checkout_complete', sessionId: SESSION_ID }, '*');
           }

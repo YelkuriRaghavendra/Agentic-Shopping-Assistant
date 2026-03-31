@@ -5,6 +5,7 @@ import { OrderService } from './order.service';
 import { Order } from './order.entity';
 import { OrderStatusHistory } from './order-status-history.entity';
 import { AuditService } from '../audit/audit.service';
+import { RagIndexingService } from './rag-indexing.service';
 import { UcpOrderStatus } from '../../../shared/types/ucp-order-status.enum';
 import { CommerceErrorCodes } from '../../../shared/errors/commerce.exception';
 
@@ -13,6 +14,7 @@ import { CommerceErrorCodes } from '../../../shared/errors/commerce.exception';
 const mockOrderRepo = { findOne: jest.fn(), save: jest.fn(), create: jest.fn() };
 const mockHistoryRepo = { save: jest.fn(), create: jest.fn() };
 const mockAuditService = { write: jest.fn() };
+const mockRagIndexingService = { indexOrder: jest.fn().mockResolvedValue(undefined) };
 
 // EntityManager mock used inside transactions
 function makeEntityManager(savedOrder: Partial<Order> = {}) {
@@ -82,6 +84,7 @@ describe('OrderService', () => {
         { provide: getRepositoryToken(OrderStatusHistory), useValue: mockHistoryRepo },
         { provide: DataSource, useValue: dataSource },
         { provide: AuditService, useValue: mockAuditService },
+        { provide: RagIndexingService, useValue: mockRagIndexingService },
       ],
     }).compile();
     service = module.get(OrderService);

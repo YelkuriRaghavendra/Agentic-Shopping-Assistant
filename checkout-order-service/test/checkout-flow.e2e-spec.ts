@@ -34,14 +34,24 @@ import { UcpOrderStatus } from '../src/shared/types/ucp-order-status.enum';
 describe('E2E: Full Checkout Flow (Task 14.1)', () => {
   let ctx: TestAppContext;
   let app: INestApplication;
+  let originalSkipUcp: string | undefined;
 
   beforeAll(async () => {
+    // Ensure UCP outbound is NOT skipped so the mocked UCP client is called
+    originalSkipUcp = process.env.SKIP_UCP_OUTBOUND;
+    process.env.SKIP_UCP_OUTBOUND = 'false';
     ctx = await buildTestApp();
     app = ctx.app;
   });
 
   afterAll(async () => {
     await app.close();
+    // Restore original env var
+    if (originalSkipUcp !== undefined) {
+      process.env.SKIP_UCP_OUTBOUND = originalSkipUcp;
+    } else {
+      delete process.env.SKIP_UCP_OUTBOUND;
+    }
   });
 
   beforeEach(() => {
@@ -104,14 +114,29 @@ describe('E2E: Full Checkout Flow (Task 14.1)', () => {
         .expect(400);
     });
 
-    it('validates required fields — returns 400 when merchant_id is missing', async () => {
+    it('accepts request without merchant_id — uses DEFAULT_MERCHANT_ID fallback', async () => {
+      // merchant_id is optional since Bug 5 fix; service uses DEFAULT_MERCHANT_ID
+      const ucpCreateResponse = {
+        id: TEST_UCP_CHECKOUT_ID,
+        status: 'incomplete',
+        payment_handlers: ['card'],
+        totals: TEST_TOTALS,
+        expires_at: null,
+        continue_url: null,
+      };
+      ctx.mocks.ucpCheckoutClient.createCheckoutSession!.mockResolvedValue(ucpCreateResponse);
+
+      const createdSession = makeCheckoutSession();
+      ctx.mocks.checkoutSessionRepo.create.mockReturnValue(createdSession);
+      ctx.mocks.checkoutSessionRepo.save.mockResolvedValue(createdSession);
+
       await request(app.getHttpServer())
         .post('/commerce/checkout/sessions')
         .send({
           customer_id: TEST_CUSTOMER_ID,
           line_items: TEST_LINE_ITEMS,
         })
-        .expect(400);
+        .expect(201);
     });
   });
 

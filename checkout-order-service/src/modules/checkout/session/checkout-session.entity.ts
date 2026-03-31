@@ -57,6 +57,12 @@ export class CheckoutSession {
   @Column({ name: 'ucp_order_permalink', type: 'text', nullable: true })
   ucpOrderPermalink: string | null;
 
+  @Column({ name: 'stripe_payment_intent_id', type: 'varchar', nullable: true })
+  stripePaymentIntentId: string | null;
+
+  @Column({ name: 'stripe_client_secret', type: 'text', nullable: true })
+  stripeClientSecret: string | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 

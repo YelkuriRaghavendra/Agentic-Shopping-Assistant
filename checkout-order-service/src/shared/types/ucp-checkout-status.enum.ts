@@ -5,4 +5,5 @@ export enum UcpCheckoutStatus {
   COMPLETE_IN_PROGRESS = 'complete_in_progress',
   COMPLETED = 'completed',
   CANCELED = 'canceled',
+  PAYMENT_FAILED = 'payment_failed',
 }

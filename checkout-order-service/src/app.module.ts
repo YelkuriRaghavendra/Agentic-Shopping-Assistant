@@ -9,6 +9,7 @@ import { HealthService } from './health/health.service';
 import { UcpClientModule } from './modules/ucp-client/ucp-client.module';
 import { CheckoutModule } from './modules/checkout/checkout.module';
 import { OrdersModule } from './modules/orders/orders.module';
+import { StripeModule } from './modules/stripe/stripe.module';
 
 @Module({
   imports: [
@@ -55,6 +56,7 @@ import { OrdersModule } from './modules/orders/orders.module';
 
     TerminusModule,
     RedisModule,
+    StripeModule,
     UcpClientModule,
     CheckoutModule,
     OrdersModule,

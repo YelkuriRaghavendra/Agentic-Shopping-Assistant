@@ -2,7 +2,14 @@
 
 import { useState, type FormEvent } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { loadStripe } from "@stripe/stripe-js";
+import { Elements, PaymentElement, useStripe, useElements } from "@stripe/react-stripe-js";
 import type { CheckoutData } from "@/types/chat.types";
+
+// Initialise stripePromise once at module level (Requirements 4.1, 8.3)
+const stripePromise = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+  ? loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY)
+  : null;
 
 interface CheckoutModalProps {
   open: boolean;
@@ -34,9 +41,72 @@ function centsToDisplay(cents: number): string {
   return (cents / 100).toFixed(2);
 }
 
+// Inner payment form — must be a child of <Elements> to use useStripe/useElements
+interface PaymentFormProps {
+  onSuccess: () => void;
+  onBack: () => void;
+}
+
+function PaymentForm({ onSuccess, onBack }: PaymentFormProps) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+
+  // Requirements 4.5, 4.6, 4.7, 4.8 — confirmPayment; card data never touches our backend
+  const handlePaymentSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!stripe || !elements) return;
+
+    setIsProcessing(true);
+    setPaymentError(null);
+
+    const { error } = await stripe.confirmPayment({
+      elements,
+      confirmParams: { return_url: window.location.href },
+      redirect: "if_required",
+    });
+
+    if (error) {
+      // Requirement 4.7 — display error inline, stay on payment step
+      setPaymentError(error.message ?? "Payment failed. Please try again.");
+      setIsProcessing(false);
+    } else {
+      // Requirement 4.6 — advance to confirm step on success
+      onSuccess();
+    }
+  };
+
+  return (
+    <form onSubmit={handlePaymentSubmit} className="flex flex-col gap-4">
+      {/* Requirement 4.3 — Stripe PaymentElement replaces plain card inputs */}
+      <PaymentElement options={{ layout: "tabs" }} />
+      {paymentError && (
+        <p className="text-[11px]" style={{ color: "#f87171" }}>{paymentError}</p>
+      )}
+      <div className="flex gap-3 mt-2">
+        <button type="button" onClick={onBack}
+          className="flex-1 py-3.5 font-josefin font-bold uppercase tracking-widest text-xs"
+          style={{ background: "transparent", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.5)", borderRadius: "4px", letterSpacing: "2px", cursor: "pointer" }}
+        >
+          &larr; Back
+        </button>
+        <button type="submit" disabled={!stripe || !elements || isProcessing}
+          className="flex-1 py-3.5 font-josefin font-bold uppercase tracking-widest text-xs disabled:cursor-not-allowed disabled:opacity-40"
+          style={{ background: "#1D9E75", color: "#000", borderRadius: "4px", letterSpacing: "2px", fontSize: "12px", border: "none", cursor: "pointer" }}
+        >
+          {isProcessing ? "Processing..." : "Review Order →"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
 export function CheckoutModal({ open, checkoutData, onClose, onComplete }: CheckoutModalProps) {
   const [step, setStep] = useState<Step>("address");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [addressError, setAddressError] = useState<string | null>(null);
+  const [confirmError, setConfirmError] = useState<string | null>(null);
 
   // Address fields
   const [fullName, setFullName] = useState("");
@@ -46,45 +116,54 @@ export function CheckoutModal({ open, checkoutData, onClose, onComplete }: Check
   const [pincode, setPincode] = useState("");
   const [phone, setPhone] = useState("");
 
-  // Payment fields
-  const [cardNumber, setCardNumber] = useState("");
-  const [expiry, setExpiry] = useState("");
-  const [cvv, setCvv] = useState("");
+  // Stripe state (Requirements 4.2, 4.4)
+  const [clientSecret, setClientSecret] = useState<string | null>(null);
+  const [paymentIntentId, setPaymentIntentId] = useState<string | null>(null);
 
   const { line_items, totals, checkout_session_id } = checkoutData;
+  const baseUrl = process.env.NEXT_PUBLIC_CHECKOUT_URL || "http://localhost:3001";
 
-  const handleAddressSubmit = (e: FormEvent) => {
+  // Requirement 4.2 — fetch PaymentIntent after address validation
+  const handleAddressSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!fullName.trim() || !addressLine.trim() || !city.trim() || !pincode.trim()) return;
-    setStep("payment");
-  };
 
-  const handlePaymentSubmit = (e: FormEvent) => {
-    e.preventDefault();
-    if (!cardNumber.trim() || !expiry.trim() || !cvv.trim()) return;
-    setStep("confirm");
-  };
-
-  const handleConfirm = async () => {
+    setAddressError(null);
     setIsSubmitting(true);
     try {
-      const baseUrl = process.env.NEXT_PUBLIC_CHECKOUT_URL || "http://localhost:3001";
+      const res = await fetch(`${baseUrl}/commerce/checkout-sessions/${checkout_session_id}/payment-intent`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        // Requirement 4.4 — display error, stay on address step
+        setAddressError(body?.message || "Could not initialise payment. Please try again.");
+        return;
+      }
+      const data = await res.json();
+      setClientSecret(data.client_secret);
+      setPaymentIntentId(data.payment_intent_id);
+      setStep("payment");
+    } catch {
+      setAddressError("Something went wrong. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Requirement 7.1, 7.2, 7.3, 7.4 — send Stripe payload to /complete
+  const handleConfirm = async () => {
+    setIsSubmitting(true);
+    setConfirmError(null);
+    try {
       const res = await fetch(`${baseUrl}/commerce/checkout-sessions/${checkout_session_id}/complete`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           payment_instrument: {
-            type: "card",
-            last4: cardNumber.slice(-4),
-            // Address collected in the form
-            billing_address: {
-              name: fullName,
-              line1: addressLine,
-              city,
-              state,
-              postal_code: pincode,
-              phone,
-            },
+            type: "stripe",
+            payment_intent_id: paymentIntentId,
           },
         }),
       });
@@ -93,10 +172,11 @@ export function CheckoutModal({ open, checkoutData, onClose, onComplete }: Check
         onComplete();
       } else {
         const body = await res.json().catch(() => ({}));
-        alert(body?.message || "Payment failed. Please try again.");
+        // Requirement 7.3 — display error, stay on confirm step
+        setConfirmError(body?.message || "Order confirmation failed. Please try again.");
       }
     } catch {
-      alert("Something went wrong. Please try again.");
+      setConfirmError("Something went wrong. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
@@ -104,6 +184,10 @@ export function CheckoutModal({ open, checkoutData, onClose, onComplete }: Check
 
   const handleClose = () => {
     setStep("address");
+    setClientSecret(null);
+    setPaymentIntentId(null);
+    setAddressError(null);
+    setConfirmError(null);
     onClose();
   };
 
@@ -251,56 +335,42 @@ export function CheckoutModal({ open, checkoutData, onClose, onComplete }: Check
                     />
                   </div>
                 </div>
-                <button type="submit" disabled={!fullName.trim() || !addressLine.trim() || !city.trim() || !pincode.trim()}
+                {addressError && (
+                  <p className="text-[11px]" style={{ color: "#f87171" }}>{addressError}</p>
+                )}
+                <button type="submit" disabled={isSubmitting || !fullName.trim() || !addressLine.trim() || !city.trim() || !pincode.trim()}
                   className="mt-2 w-full py-3.5 font-josefin font-bold uppercase tracking-widest text-xs transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-40"
                   style={{ background: "#1D9E75", color: "#000", borderRadius: "4px", letterSpacing: "2px", fontSize: "12px", border: "none", cursor: "pointer" }}
                 >
-                  Continue to Payment &rarr;
+                  {isSubmitting ? "Please wait..." : "Continue to Payment →"}
                 </button>
               </form>
             )}
 
-            {/* Payment Step */}
+            {/* Payment Step — Stripe Elements (Requirements 4.3, 8.3) */}
             {step === "payment" && (
-              <form onSubmit={handlePaymentSubmit} className="flex flex-col gap-3">
-                <div className="flex flex-col gap-1.5">
-                  <label className={labelStyle} style={labelColor}>Card Number</label>
-                  <input value={cardNumber} onChange={(e) => setCardNumber(e.target.value.replace(/\D/g, "").slice(0, 16))} placeholder="4242 4242 4242 4242" required style={inputStyle}
-                    onFocus={(e) => { e.target.style.borderColor = "rgba(29,158,117,0.45)"; }}
-                    onBlur={(e) => { e.target.style.borderColor = "rgba(255,255,255,0.09)"; }}
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="flex flex-col gap-1.5">
-                    <label className={labelStyle} style={labelColor}>Expiry</label>
-                    <input value={expiry} onChange={(e) => setExpiry(e.target.value)} placeholder="MM/YY" required style={inputStyle}
-                      onFocus={(e) => { e.target.style.borderColor = "rgba(29,158,117,0.45)"; }}
-                      onBlur={(e) => { e.target.style.borderColor = "rgba(255,255,255,0.09)"; }}
-                    />
+              <>
+                {!stripePromise ? (
+                  // Requirement 8.3 — error state when publishable key is absent
+                  <div className="p-4 rounded-xl text-center" style={{ background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.2)" }}>
+                    <p className="text-[12px]" style={{ color: "#f87171" }}>
+                      Payment is currently unavailable. Please contact support.
+                    </p>
+                    <button type="button" onClick={() => setStep("address")} className="mt-3 text-[11px] font-mono underline" style={{ color: "rgba(255,255,255,0.4)" }}>
+                      ← Back
+                    </button>
                   </div>
-                  <div className="flex flex-col gap-1.5">
-                    <label className={labelStyle} style={labelColor}>CVV</label>
-                    <input value={cvv} onChange={(e) => setCvv(e.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="123" required type="password" style={inputStyle}
-                      onFocus={(e) => { e.target.style.borderColor = "rgba(29,158,117,0.45)"; }}
-                      onBlur={(e) => { e.target.style.borderColor = "rgba(255,255,255,0.09)"; }}
+                ) : clientSecret ? (
+                  <Elements stripe={stripePromise} options={{ clientSecret, appearance: { theme: "night" } }}>
+                    <PaymentForm
+                      onSuccess={() => setStep("confirm")}
+                      onBack={() => setStep("address")}
                     />
-                  </div>
-                </div>
-                <div className="flex gap-3 mt-2">
-                  <button type="button" onClick={() => setStep("address")}
-                    className="flex-1 py-3.5 font-josefin font-bold uppercase tracking-widest text-xs"
-                    style={{ background: "transparent", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.5)", borderRadius: "4px", letterSpacing: "2px", cursor: "pointer" }}
-                  >
-                    &larr; Back
-                  </button>
-                  <button type="submit" disabled={!cardNumber.trim() || !expiry.trim() || !cvv.trim()}
-                    className="flex-1 py-3.5 font-josefin font-bold uppercase tracking-widest text-xs disabled:cursor-not-allowed disabled:opacity-40"
-                    style={{ background: "#1D9E75", color: "#000", borderRadius: "4px", letterSpacing: "2px", fontSize: "12px", border: "none", cursor: "pointer" }}
-                  >
-                    Review Order &rarr;
-                  </button>
-                </div>
-              </form>
+                  </Elements>
+                ) : (
+                  <p className="text-[12px] text-center" style={{ color: "rgba(255,255,255,0.4)" }}>Loading payment form…</p>
+                )}
+              </>
             )}
 
             {/* Confirm Step */}
@@ -318,9 +388,12 @@ export function CheckoutModal({ open, checkoutData, onClose, onComplete }: Check
                 <div className="p-4 rounded-xl" style={{ background: "rgba(29,158,117,0.05)", border: "1px solid rgba(29,158,117,0.15)" }}>
                   <p className={labelStyle} style={labelColor}>Payment</p>
                   <p className="mt-1 text-[12px]" style={{ color: "rgba(255,255,255,0.6)" }}>
-                    Card ending in ****{cardNumber.slice(-4)}
+                    Secured via Stripe
                   </p>
                 </div>
+                {confirmError && (
+                  <p className="text-[11px]" style={{ color: "#f87171" }}>{confirmError}</p>
+                )}
                 <div className="flex gap-3 mt-2">
                   <button type="button" onClick={() => setStep("payment")}
                     className="flex-1 py-3.5 font-josefin font-bold uppercase tracking-widest text-xs"
@@ -328,6 +401,7 @@ export function CheckoutModal({ open, checkoutData, onClose, onComplete }: Check
                   >
                     &larr; Back
                   </button>
+                  {/* Requirement 7.4 — disabled + loading state during submission */}
                   <button type="button" onClick={handleConfirm} disabled={isSubmitting}
                     className="flex-1 py-3.5 font-josefin font-bold uppercase tracking-widest text-xs disabled:cursor-not-allowed disabled:opacity-40"
                     style={{ background: "#1D9E75", color: "#000", borderRadius: "4px", letterSpacing: "2px", fontSize: "12px", border: "none", cursor: "pointer" }}

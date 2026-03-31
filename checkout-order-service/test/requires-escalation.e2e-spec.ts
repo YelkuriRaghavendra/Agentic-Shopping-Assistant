@@ -29,14 +29,24 @@ const CONTINUE_URL = 'https://merchant.example.com/checkout/escalate/abc123';
 describe('E2E: requires_escalation Flow (Task 14.2)', () => {
   let ctx: TestAppContext;
   let app: INestApplication;
+  let originalSkipUcp: string | undefined;
 
   beforeAll(async () => {
+    // Ensure UCP outbound is NOT skipped so the mocked UCP client is called
+    originalSkipUcp = process.env.SKIP_UCP_OUTBOUND;
+    process.env.SKIP_UCP_OUTBOUND = 'false';
     ctx = await buildTestApp();
     app = ctx.app;
   });
 
   afterAll(async () => {
     await app.close();
+    // Restore original env var
+    if (originalSkipUcp !== undefined) {
+      process.env.SKIP_UCP_OUTBOUND = originalSkipUcp;
+    } else {
+      delete process.env.SKIP_UCP_OUTBOUND;
+    }
   });
 
   beforeEach(() => {

@@ -7,6 +7,7 @@ import { CheckoutSession } from './checkout-session.entity';
 import { UcpCheckoutClient } from '../../ucp-client/checkout-client/ucp-checkout.client';
 import { UcpCheckoutStatus } from '../../../shared/types/ucp-checkout-status.enum';
 import { CommerceException, CommerceErrorCodes } from '../../../shared/errors/commerce.exception';
+import { STRIPE_CLIENT } from '../../stripe/stripe.provider';
 
 const mockRepo = {
   findOne: jest.fn(),
@@ -24,6 +25,12 @@ const mockUcpClient = {
 
 const mockQueue = {
   add: jest.fn(),
+};
+
+const mockStripe = {
+  paymentIntents: {
+    create: jest.fn(),
+  },
 };
 
 const lineItems = [{ item: { id: 'p1', title: 'Shoe', price: 1000 }, quantity: 1 }];
@@ -45,6 +52,8 @@ function makeSession(overrides: Partial<CheckoutSession> = {}): CheckoutSession 
     totalsSnapshot: null,
     ucpOrderId: null,
     ucpOrderPermalink: null,
+    stripePaymentIntentId: null,
+    stripeClientSecret: null,
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,
@@ -62,6 +71,7 @@ describe('CheckoutSessionService', () => {
         { provide: getRepositoryToken(CheckoutSession), useValue: mockRepo },
         { provide: UcpCheckoutClient, useValue: mockUcpClient },
         { provide: getQueueToken('order-events'), useValue: mockQueue },
+        { provide: STRIPE_CLIENT, useValue: mockStripe },
       ],
     }).compile();
     service = module.get(CheckoutSessionService);

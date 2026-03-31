@@ -1,13 +1,15 @@
-import { Injectable, Logger, HttpStatus } from '@nestjs/common';
+import { Injectable, Logger, HttpStatus, Inject } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
 import { randomUUID } from 'crypto';
+import Stripe from 'stripe';
 import { CheckoutSession } from './checkout-session.entity';
 import { UcpCheckoutClient } from '../../ucp-client/checkout-client/ucp-checkout.client';
 import { UcpCheckoutStatus } from '../../../shared/types/ucp-checkout-status.enum';
 import { CommerceException, CommerceErrorCodes } from '../../../shared/errors/commerce.exception';
+import { STRIPE_CLIENT } from '../../stripe/stripe.provider';
 import type { UcpLineItem, UcpBuyer, UcpContext } from '../../../shared/types/ucp-types.interface';
 
 @Injectable()
@@ -20,6 +22,8 @@ export class CheckoutSessionService {
     private readonly ucpCheckoutClient: UcpCheckoutClient,
     @InjectQueue('order-events')
     private readonly orderEventsQueue: Queue,
+    @Inject(STRIPE_CLIENT)
+    private readonly stripe: Stripe,
   ) {}
 
   // ── Public methods ──────────────────────────────────────────────────────────
@@ -205,6 +209,74 @@ export class CheckoutSessionService {
     this.emitStatusLog(session.sessionId, fromStatus, UcpCheckoutStatus.CANCELED);
 
     return session;
+  }
+
+  async createOrGetPaymentIntent(
+    sessionId: string,
+  ): Promise<{ client_secret: string; payment_intent_id: string }> {
+    const session = await this.loadSession(sessionId);
+    this.assertNotCanceled(session);
+
+    if (session.stripePaymentIntentId && session.stripeClientSecret) {
+      return {
+        client_secret: session.stripeClientSecret,
+        payment_intent_id: session.stripePaymentIntentId,
+      };
+    }
+
+    const paymentIntent = await this.stripe.paymentIntents.create({
+      amount: session.totalsSnapshot!.grand_total_cents,
+      currency: 'inr',
+      metadata: { checkout_session_id: sessionId },
+    });
+
+    session.stripePaymentIntentId = paymentIntent.id;
+    session.stripeClientSecret = paymentIntent.client_secret!;
+    await this.sessionRepo.save(session);
+
+    return {
+      client_secret: paymentIntent.client_secret!,
+      payment_intent_id: paymentIntent.id,
+    };
+  }
+
+  async handlePaymentSucceeded(paymentIntentId: string): Promise<void> {
+    const session = await this.sessionRepo.findOne({
+      where: { stripePaymentIntentId: paymentIntentId },
+    });
+
+    if (!session) {
+      this.logger.warn(
+        `handlePaymentSucceeded: no session found for paymentIntentId=${paymentIntentId}`,
+      );
+      return;
+    }
+
+    session.ucpStatus = UcpCheckoutStatus.COMPLETED;
+    if (!session.ucpOrderId) {
+      session.ucpOrderId = randomUUID();
+    }
+    await this.sessionRepo.save(session);
+    await this.handleCompleted(session);
+  }
+
+  async handlePaymentFailed(paymentIntentId: string, reason: string | null): Promise<void> {
+    const session = await this.sessionRepo.findOne({
+      where: { stripePaymentIntentId: paymentIntentId },
+    });
+
+    if (!session) {
+      this.logger.warn(
+        `handlePaymentFailed: no session found for paymentIntentId=${paymentIntentId}`,
+      );
+      return;
+    }
+
+    session.ucpStatus = UcpCheckoutStatus.PAYMENT_FAILED;
+    await this.sessionRepo.save(session);
+    this.logger.warn(
+      `Payment failed for session ${session.sessionId}: ${reason ?? 'unknown reason'}`,
+    );
   }
 
   // ── Private helpers ─────────────────────────────────────────────────────────
