@@ -238,7 +238,7 @@ export class CheckoutSessionService {
       metadata: { checkout_session_id: sessionId },
       after_completion: {
         type: 'redirect',
-        redirect: { url: `${process.env.PLATFORM_BASE_URL ?? 'http://localhost:3001'}/commerce/checkout/sessions/${sessionId}/summary` },
+        redirect: { url: `${process.env.FRONTEND_URL ?? 'http://localhost:4001'}/chat` },
       },
     });
 
