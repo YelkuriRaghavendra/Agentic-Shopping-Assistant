@@ -228,14 +228,11 @@ export function useChat(
       setMessages((prev) => [...prev, botMessage]);
 
       setIsTyping(true);
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 30000);
       try {
         const res = await fetch(endpoints.chatStream, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
-          signal: controller.signal,
         });
 
         if (!res.ok || !res.body) {
@@ -252,7 +249,44 @@ export function useChat(
 
         while (true) {
           const { done, value } = await reader.read();
-          if (done) break;
+
+          if (done) {
+            // Process any remaining data in the buffer after stream ends
+            if (buffer.trim()) {
+              const remainingLines = buffer.split("\n");
+              for (const line of remainingLines) {
+                if (!line.startsWith("data: ")) continue;
+                const jsonStr = line.slice(6).trim();
+                if (!jsonStr) continue;
+                try {
+                  const event = JSON.parse(jsonStr);
+                  if (event.type === "done") {
+                    const hasHtml = /<\/?(?:table|tr|td|th|ul|ol|li)\b/i.test(streamedContent);
+                    if (event.session_id) setActiveSessionId(event.session_id);
+                    if (event.checkout_data) console.log("[useChat] checkout_data from buffer:", event.checkout_data);
+                    setMessages((prev) =>
+                      prev.map((m) =>
+                        m.id === botId
+                          ? {
+                              ...m,
+                              id: event.message_id || botId,
+                              content: streamedContent,
+                              answerHtml: hasHtml && event.answer_html ? event.answer_html : undefined,
+                              citedProducts: event.cited_products,
+                              suggestions: event.suggestions,
+                              continueUrl: event.continue_url || undefined,
+                              checkoutData: event.checkout_data || undefined,
+                              streamDone: true,
+                            }
+                          : m
+                      )
+                    );
+                  }
+                } catch { /* ignore parse errors in trailing buffer */ }
+              }
+            }
+            break;
+          }
 
           buffer += decoder.decode(value, { stream: true });
           const lines = buffer.split("\n");
@@ -281,6 +315,13 @@ export function useChat(
                 if (event.session_id) {
                   setActiveSessionId(event.session_id);
                 }
+                // Debug checkout data
+                if (event.checkout_data) {
+                  console.log("[useChat] checkout_data received:", event.checkout_data);
+                }
+                if (event.continue_url) {
+                  console.log("[useChat] continue_url received:", event.continue_url);
+                }
                 setMessages((prev) =>
                   prev.map((m) =>
                     m.id === botId
@@ -291,6 +332,8 @@ export function useChat(
                           answerHtml: hasHtml && event.answer_html ? event.answer_html : undefined,
                           citedProducts: event.cited_products,
                           suggestions: event.suggestions,
+                          continueUrl: event.continue_url || undefined,
+                          checkoutData: event.checkout_data || undefined,
                           streamDone: true,
                         }
                       : m
@@ -328,7 +371,6 @@ export function useChat(
         setError(errorText);
         scrollToBottom();
       } finally {
-        clearTimeout(timeout);
         setIsTyping(false);
         setLoading(false);
       }
@@ -363,14 +405,11 @@ export function useChat(
       };
 
       setIsTyping(true);
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 30000);
       try {
         const res = await fetch(endpoints.chatStream, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
-          signal: controller.signal,
         });
         if (!res.ok || !res.body) {
           if (res.status === 429) {
@@ -386,7 +425,36 @@ export function useChat(
 
         while (true) {
           const { done, value } = await reader.read();
-          if (done) break;
+          if (done) {
+            // Process remaining buffer after stream ends
+            if (buffer.trim()) {
+              for (const line of buffer.split("\n")) {
+                if (!line.startsWith("data: ")) continue;
+                try {
+                  const event = JSON.parse(line.slice(6).trim());
+                  if (event.type === "done") {
+                    const hasHtml = /<\/?(?:table|tr|td|th|ul|ol|li)\b/i.test(streamedContent);
+                    if (event.session_id) setActiveSessionId(event.session_id);
+                    setMessages((prev) =>
+                      prev.map((m) =>
+                        m.id === botId
+                          ? {
+                              ...m, id: event.message_id || botId, content: streamedContent,
+                              answerHtml: hasHtml && event.answer_html ? event.answer_html : undefined,
+                              citedProducts: event.cited_products, suggestions: event.suggestions,
+                              continueUrl: event.continue_url || undefined,
+                              checkoutData: event.checkout_data || undefined,
+                              streamDone: true,
+                            }
+                          : m
+                      )
+                    );
+                  }
+                } catch { /* ignore */ }
+              }
+            }
+            break;
+          }
           buffer += decoder.decode(value, { stream: true });
           const lines = buffer.split("\n");
           buffer = lines.pop() ?? "";
@@ -414,6 +482,8 @@ export function useChat(
                           answerHtml: hasHtml && event.answer_html ? event.answer_html : undefined,
                           citedProducts: event.cited_products,
                           suggestions: event.suggestions,
+                          continueUrl: event.continue_url || undefined,
+                          checkoutData: event.checkout_data || undefined,
                           streamDone: true,
                         }
                       : m
@@ -448,7 +518,6 @@ export function useChat(
         setError(errorText);
         scrollToBottom();
       } finally {
-        clearTimeout(timeout);
         setIsTyping(false);
         setLoading(false);
       }

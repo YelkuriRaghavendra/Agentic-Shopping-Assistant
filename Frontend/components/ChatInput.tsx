@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type KeyboardEvent } from "react";
+import { Input } from "@/components/ui/input";
 
 interface ChatInputProps {
   onSend: (message: string) => void;
@@ -43,7 +44,7 @@ export function ChatInput({ onSend, disabled = false, sessionEnded = false }: Ch
         borderRadius: "24px",
         transition: "border-color 0.2s ease",
       }}>
-        <input
+        <Input
           type="text"
           value={value}
           onChange={(e) => setValue(e.target.value)}
@@ -52,7 +53,7 @@ export function ChatInput({ onSend, disabled = false, sessionEnded = false }: Ch
           placeholder={placeholder}
           maxLength={2000}
           aria-label="Chat message input"
-          className="flex-1 bg-transparent text-[13px] outline-none disabled:cursor-not-allowed"
+          className="flex-1 bg-transparent text-[13px] outline-none border-none ring-0 focus-visible:ring-0 focus-visible:ring-offset-0 disabled:cursor-not-allowed h-auto p-0"
           style={{
             color: "rgba(255,255,255,0.65)",
             fontFamily: "var(--font-inter)",

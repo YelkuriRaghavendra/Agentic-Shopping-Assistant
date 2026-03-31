@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     # ── RAG Service ───────────────────────────────────
     RAG_SERVICE_URL: str = "http://rag-service:8001"
     RAG_API_KEY: str = "dev-secret-change-in-prod"
-    RAG_TIMEOUT_SECONDS: int = 15
+    RAG_TIMEOUT_SECONDS: int = 60
     RAG_TOP_K: int = 5
 
     # ── Session ───────────────────────────────────────
@@ -77,6 +77,16 @@ class Settings(BaseSettings):
     REDIS_ENABLED: bool = True
     CACHE_RAG_TTL: int = 300       # 5 minutes
     CACHE_PROFILE_TTL: int = 300   # 5 minutes
+
+    # ── Commerce Service ──────────────────────────────
+    COMMERCE_SERVICE_URL: str = "http://localhost:3001"
+    COMMERCE_SERVICE_API_KEY: str = ""
+    COMMERCE_TIMEOUT_SECONDS: int = 15
+
+    # ── Feature Flags (LaunchDarkly) ──────────────────
+    LAUNCHDARKLY_SDK_KEY: str = ""
+    # Set to True in local dev to bypass LaunchDarkly and enable all commerce intents
+    FEATURE_FLAG_FORCE_ENABLE: bool = False
 
     # ── Logging ───────────────────────────────────────
     LOG_LEVEL: str = "INFO"

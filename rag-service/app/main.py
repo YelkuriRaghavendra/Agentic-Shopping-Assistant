@@ -21,6 +21,7 @@ from app.api.routes import health as health_v1
 from app.api.routes import ingest as ingest_v1
 from app.api.routes import retrieve as retrieve_v1
 from app.api.routes import sources as sources_v1
+from app.api.routes import order_events as order_events_v1
 from app.core.config import get_settings
 from app.core.exceptions import RAGServiceError
 from app.core.logging import setup_logging, get_logger
@@ -107,6 +108,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 
 # ── Routers ───────────────────────────────────────────────────────────────────
 app.include_router(health_v1.router)
-app.include_router(ingest_v1.router,   prefix=settings.API_PREFIX)
-app.include_router(retrieve_v1.router, prefix=settings.API_PREFIX)
-app.include_router(sources_v1.router,  prefix=settings.API_PREFIX)
+app.include_router(ingest_v1.router,        prefix=settings.API_PREFIX)
+app.include_router(retrieve_v1.router,      prefix=settings.API_PREFIX)
+app.include_router(sources_v1.router,       prefix=settings.API_PREFIX)
+app.include_router(order_events_v1.router,  prefix=settings.API_PREFIX)

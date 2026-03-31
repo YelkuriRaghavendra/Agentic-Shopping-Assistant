@@ -38,7 +38,9 @@ from app.db.repositories import (
 )
 from app.clients.llm_client import LLMClient
 from app.clients.rag_client import RAGClient
+from app.clients.commerce_client import CommerceClient
 from app.services.chat_service import ChatService
+from app.services.feature_flag_service import FeatureFlagService
 from app.services.guardrails_service import GuardrailsService
 from app.services.memory_service import MemoryService
 from app.services.prompt_builder_service import PromptBuilderService
@@ -54,6 +56,8 @@ logger = get_logger(__name__)
 # Module-level singletons for stateless services
 _llm_client    = LLMClient()
 _rag_client    = RAGClient()
+_commerce      = CommerceClient()
+_feature_flags = FeatureFlagService()
 _rate_limiter  = RateLimiterService()
 _guardrails    = GuardrailsService()
 _prompt        = PromptBuilderService()
@@ -79,6 +83,8 @@ def _make_chat_service(db: AsyncSession) -> ChatService:
         citations=_citations,
         tools=ToolRegistry(_rag_client),
         skills=_skills,
+        commerce=_commerce,
+        feature_flags=_feature_flags,
     )
 
 

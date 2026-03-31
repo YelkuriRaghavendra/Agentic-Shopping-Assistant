@@ -14,12 +14,23 @@
  * Validates: Requirements 6.3
  */
 
+import React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import * as fc from "fast-check";
 import { useChat } from "@/hooks/useChat";
 import { useSessions } from "@/hooks/useSessions";
 import { API_PREFIX } from "@/config/config";
+
+function createWrapper() {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return function Wrapper({ children }: { children: React.ReactNode }) {
+    return React.createElement(QueryClientProvider, { client: queryClient }, children);
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -96,7 +107,7 @@ describe("Property 13: Session selection triggers message history load", () => {
 
           const { rerender } = renderHook(
             ({ sid }: { sid: string | null }) => useChat(customerId, sid),
-            { initialProps: { sid: null as string | null } }
+            { initialProps: { sid: null as string | null }, wrapper: createWrapper() }
           );
 
           // Simulate selectSession: pass the new sessionId as prop (mirrors page.tsx wiring)
@@ -125,7 +136,9 @@ describe("Property 13: Session selection triggers message history load", () => {
         fc.asyncProperty(uuidArb, uuidArb, async (customerId, sessionId) => {
           setupFetchMock();
 
-          const { result } = renderHook(() => useSessions(customerId));
+          const { result } = renderHook(() => useSessions(customerId), {
+            wrapper: createWrapper(),
+          });
 
           await act(async () => {
             await new Promise((r) => setTimeout(r, 0));

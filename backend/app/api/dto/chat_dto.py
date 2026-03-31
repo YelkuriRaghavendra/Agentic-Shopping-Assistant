@@ -124,6 +124,8 @@ class ChatResponse(BaseModel):
     blocked:          bool
     latency_ms:       int
     tokens_used:      int
+    continue_url:     str | None = None
+    checkout_data:    dict | None = None
 
 
 class SessionResponse(BaseModel):

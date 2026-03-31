@@ -13,9 +13,10 @@ export interface MessageBubbleProps {
   onSelectProduct?: (productId: string, productName: string) => void;
   onSelectSuggestion?: (message: string) => void;
   onCompareProducts?: (products: ProductCardDTO[]) => void;
+  onCheckout?: (message: ChatMessageUI) => void;
 }
 
-export const MessageBubble = memo(function MessageBubble({ message, onSelectProduct, onSelectSuggestion, onCompareProducts }: MessageBubbleProps) {
+export const MessageBubble = memo(function MessageBubble({ message, onSelectProduct, onSelectSuggestion, onCompareProducts, onCheckout }: MessageBubbleProps) {
   const isUser = message.role === "user";
 
   return (
@@ -78,6 +79,22 @@ export const MessageBubble = memo(function MessageBubble({ message, onSelectProd
         {/* Product slider */}
         {!isUser && message.citedProducts && message.citedProducts.length > 0 && onSelectProduct && (
           <ProductSlider products={message.citedProducts} onSelectProduct={onSelectProduct} onCompareProducts={onCompareProducts} />
+        )}
+
+        {/* Checkout CTA */}
+        {!isUser && message.checkoutData && onCheckout && (
+          <button
+            onClick={() => onCheckout(message)}
+            className="inline-block rounded-full text-[12px] font-medium px-5 py-2.5 border-none cursor-pointer transition-all duration-200"
+            style={{
+              background: "linear-gradient(135deg, #1D9E75, #0F6E56)",
+              color: "#fff",
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.transform = "scale(1.03)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.transform = "scale(1)"; }}
+          >
+            Proceed to Checkout &rarr;
+          </button>
         )}
 
         {/* Suggestion chips */}

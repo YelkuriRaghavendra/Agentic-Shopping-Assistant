@@ -5,11 +5,13 @@ from pydantic import BaseModel, Field
 
 
 class RetrievalFilters(BaseModel):
-    brand:     str | None = None
-    category:  str | None = None
-    document_type:  str | None = None
-    min_price: float | None = Field(default=None, ge=0)
-    max_price: float | None = Field(default=None, ge=0)
+    brand:        str | None = None
+    category:     str | None = None
+    document_type: str | None = None
+    min_price:    float | None = Field(default=None, ge=0)
+    max_price:    float | None = Field(default=None, ge=0)
+    # Required when document_type = ORDER (Requirement 12.2, 12.4)
+    customer_id:  str | None = None
 
     def to_metadata_filter(self) -> dict[str, Any]:
         filters: dict[str, Any] = {}
@@ -17,6 +19,8 @@ class RetrievalFilters(BaseModel):
             filters["brand"] = self.brand
         if self.category:
             filters["category"] = self.category
+        if self.customer_id:
+            filters["customer_id"] = self.customer_id
         return filters
 
 class RetrievalRequest(BaseModel):

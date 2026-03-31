@@ -133,6 +133,20 @@ class RetrievalService:
                 where_clauses.append("(d.metadata->>'in_stock')::boolean = :in_stock")
                 params["in_stock"] = filters["in_stock"]
 
+        # Requirement 12.2, 12.4 — ORDER embeddings MUST be scoped to a customer_id.
+        # If doc_type is ORDER and no customer_id filter is provided, return nothing
+        # to prevent cross-customer data leakage.
+        if resolved_doc_type == "ORDER":
+            customer_id = (filters or {}).get("customer_id")
+            if not customer_id:
+                logger.warning(
+                    "retrieval.order_query_missing_customer_id",
+                    msg="ORDER retrieval requires customer_id filter; returning empty results",
+                )
+                return []
+            where_clauses.append("d.metadata->>'customer_id' = :customer_id")
+            params["customer_id"] = customer_id
+
         where_sql = " AND ".join(where_clauses)
 
         sql = text(f"""

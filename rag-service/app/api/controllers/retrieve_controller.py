@@ -29,7 +29,6 @@ class RetrieveController:
             filters["max_price"] = request.filters.max_price
         if request.filters and request.filters.min_price is not None:
             filters["min_price"] = request.filters.min_price
-
         results = await service.retrieve(
             query=request.query,
             top_k=request.top_k,

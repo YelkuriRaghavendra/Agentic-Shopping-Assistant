@@ -1,10 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import { AnimatePresence } from "framer-motion";
 import { MessageBubble } from "./MessageBubble";
 import { ChatInput } from "./ChatInput";
 import { TypingIndicator } from "./TypingIndicator";
-import type { ChatMessageUI, ProductCardDTO } from "@/types/chat.types";
+import { CheckoutModal } from "./CheckoutModal";
+import type { ChatMessageUI, ProductCardDTO, CheckoutData } from "@/types/chat.types";
 import type React from "react";
 
 export interface ChatWindowProps {
@@ -42,6 +44,16 @@ export function ChatWindow({
   bottomRef,
   isHistoryLoading = false,
 }: ChatWindowProps) {
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [checkoutData, setCheckoutData] = useState<CheckoutData | null>(null);
+
+  const handleCheckout = (message: ChatMessageUI) => {
+    if (message.checkoutData) {
+      setCheckoutData(message.checkoutData);
+      setCheckoutOpen(true);
+    }
+  };
+
   return (
     <div className="flex h-full w-full flex-col" style={{ background: "#080809" }}>
       {/* Header */}
@@ -103,6 +115,7 @@ export function ChatWindow({
                 onSelectProduct={sendProductMessage}
                 onSelectSuggestion={sendMessage}
                 onCompareProducts={sendCompareMessage}
+                onCheckout={handleCheckout}
               />
             ))}
             {isTyping && !messages.some((m) => m.role === "bot" && !m.streamDone) && (
@@ -119,6 +132,18 @@ export function ChatWindow({
         disabled={inputDisabled || sessionEnded}
         sessionEnded={sessionEnded}
       />
+
+      {/* Checkout Modal */}
+      {checkoutData && (
+        <CheckoutModal
+          open={checkoutOpen}
+          checkoutData={checkoutData}
+          onClose={() => setCheckoutOpen(false)}
+          onComplete={() => {
+            sendMessage("My order has been placed successfully!");
+          }}
+        />
+      )}
     </div>
   );
 }
