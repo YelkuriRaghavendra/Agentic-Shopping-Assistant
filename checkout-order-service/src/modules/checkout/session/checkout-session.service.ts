@@ -274,6 +274,19 @@ export class CheckoutSessionService {
     };
   }
 
+  async handleCheckoutSessionCompleted(sessionId: string): Promise<void> {
+    const session = await this.sessionRepo.findOne({ where: { sessionId } });
+    if (!session) {
+      this.logger.warn(`handleCheckoutSessionCompleted: no session found for sessionId=${sessionId}`);
+      return;
+    }
+    if (session.ucpStatus === UcpCheckoutStatus.COMPLETED) return; // idempotent
+    session.ucpStatus = UcpCheckoutStatus.COMPLETED;
+    if (!session.ucpOrderId) session.ucpOrderId = randomUUID();
+    await this.sessionRepo.save(session);
+    await this.handleCompleted(session);
+  }
+
   async handlePaymentSucceeded(paymentIntentId: string): Promise<void> {
     const session = await this.sessionRepo.findOne({
       where: { stripePaymentIntentId: paymentIntentId },

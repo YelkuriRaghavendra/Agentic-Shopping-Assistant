@@ -64,6 +64,21 @@ export class StripeWebhookController {
         break;
       }
 
+      case 'checkout.session.completed': {
+        // Fired by Stripe Payment Links on successful payment
+        const checkoutSession = event.data.object as Stripe.Checkout.Session;
+        const paymentIntentId = typeof checkoutSession.payment_intent === 'string'
+          ? checkoutSession.payment_intent
+          : checkoutSession.payment_intent?.id;
+        const sessionId = checkoutSession.metadata?.checkout_session_id;
+        if (sessionId) {
+          await this.checkoutSessionService.handleCheckoutSessionCompleted(sessionId);
+        } else if (paymentIntentId) {
+          await this.checkoutSessionService.handlePaymentSucceeded(paymentIntentId);
+        }
+        break;
+      }
+
       case 'payment_intent.payment_failed': {
         const paymentIntent = event.data.object as Stripe.PaymentIntent;
         const reason = paymentIntent.last_payment_error?.message ?? null;

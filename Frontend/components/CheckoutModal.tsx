@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useState, useEffect, useRef, type FormEvent } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { CheckoutData } from "@/types/chat.types";
 
@@ -11,7 +11,7 @@ interface CheckoutModalProps {
   onComplete: () => void;
 }
 
-type Step = "address" | "redirecting" | "success";
+type Step = "address" | "redirecting" | "awaiting" | "success" | "failed";
 
 const inputStyle = {
   background: "rgba(255,255,255,0.03)",
@@ -48,6 +48,41 @@ export function CheckoutModal({ open, checkoutData, onClose, onComplete }: Check
 
   const { line_items, totals, checkout_session_id } = checkoutData;
   const baseUrl = process.env.NEXT_PUBLIC_CHECKOUT_URL || "http://localhost:3001";
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Poll session status every 3s while awaiting payment
+  useEffect(() => {
+    if (step !== "awaiting") {
+      if (pollRef.current) clearInterval(pollRef.current);
+      return;
+    }
+
+    const poll = async () => {
+      try {
+        const res = await fetch(
+          `${baseUrl}/commerce/checkout/sessions/${checkout_session_id}`,
+          { method: "GET", headers: { "Content-Type": "application/json" } }
+        );
+        if (!res.ok) return;
+        const session = await res.json();
+        const status: string = session.ucpStatus ?? session.status ?? "";
+
+        if (status === "completed") {
+          clearInterval(pollRef.current!);
+          setStep("success");
+          onComplete();
+        } else if (status === "payment_failed") {
+          clearInterval(pollRef.current!);
+          setStep("failed");
+        }
+      } catch {
+        // ignore poll errors — keep trying
+      }
+    };
+
+    pollRef.current = setInterval(poll, 3000);
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, [step, baseUrl, checkout_session_id, onComplete]);
 
   const handleAddressSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -72,8 +107,8 @@ export function CheckoutModal({ open, checkoutData, onClose, onComplete }: Check
 
       const { url } = await res.json();
       window.open(url, "_blank");
-      setStep("success");
-      onComplete();
+      // Start polling — order is confirmed only when webhook fires
+      setStep("awaiting");
     } catch {
       setAddressError("Something went wrong. Please try again.");
       setStep("address");
@@ -83,6 +118,7 @@ export function CheckoutModal({ open, checkoutData, onClose, onComplete }: Check
   };
 
   const handleClose = () => {
+    if (pollRef.current) clearInterval(pollRef.current);
     setStep("address");
     setAddressError(null);
     onClose();
@@ -122,11 +158,11 @@ export function CheckoutModal({ open, checkoutData, onClose, onComplete }: Check
             </div>
 
             <h2 className="font-josefin font-bold uppercase tracking-widest text-lg mb-4" style={{ color: "#fff" }}>
-              {step === "success" ? "Payment Initiated" : "Checkout"}
+              {step === "success" ? "Order Confirmed" : step === "failed" ? "Payment Failed" : "Checkout"}
             </h2>
 
-            {/* Order Summary */}
-            {step !== "success" && (
+            {/* Order Summary — show on address + awaiting steps */}
+            {(step === "address" || step === "redirecting" || step === "awaiting") && (
               <div className="mb-6 p-4 rounded-xl" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
                 <p className={labelStyle} style={labelColor}>Order Summary</p>
                 <div className="mt-3 space-y-2">
@@ -207,7 +243,7 @@ export function CheckoutModal({ open, checkoutData, onClose, onComplete }: Check
               </form>
             )}
 
-            {/* Redirecting Step */}
+            {/* Redirecting */}
             {step === "redirecting" && (
               <div className="text-center py-8">
                 <div className="flex justify-center mb-4">
@@ -217,7 +253,30 @@ export function CheckoutModal({ open, checkoutData, onClose, onComplete }: Check
               </div>
             )}
 
-            {/* Success Step */}
+            {/* Awaiting Payment */}
+            {step === "awaiting" && (
+              <div className="text-center py-6">
+                <div className="flex justify-center mb-4">
+                  <div className="h-8 w-8 rounded-full border-2 animate-spin" style={{ borderColor: "#1D9E75", borderTopColor: "transparent" }} />
+                </div>
+                <p className="text-[14px] mb-2 font-semibold" style={{ color: "rgba(255,255,255,0.85)" }}>
+                  Waiting for payment confirmation…
+                </p>
+                <p className="text-[11px]" style={{ color: "rgba(255,255,255,0.4)" }}>
+                  Complete your payment in the Stripe tab. This will update automatically.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleClose}
+                  className="mt-6 w-full py-3 font-josefin font-bold uppercase tracking-widest text-xs"
+                  style={{ background: "transparent", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.4)", borderRadius: "4px", letterSpacing: "2px", fontSize: "11px", cursor: "pointer" }}
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+
+            {/* Success */}
             {step === "success" && (
               <div className="text-center py-6">
                 <div className="flex justify-center mb-4">
@@ -226,10 +285,10 @@ export function CheckoutModal({ open, checkoutData, onClose, onComplete }: Check
                   </div>
                 </div>
                 <p className="text-[14px] mb-2" style={{ color: "rgba(255,255,255,0.8)" }}>
-                  Stripe payment page opened in a new tab.
+                  Your order has been placed successfully!
                 </p>
                 <p className="text-[11px] font-mono" style={{ color: "rgba(255,255,255,0.3)" }}>
-                  Complete your payment there to confirm the order.
+                  Order ID: {checkout_session_id}
                 </p>
                 <button
                   type="button"
@@ -237,7 +296,28 @@ export function CheckoutModal({ open, checkoutData, onClose, onComplete }: Check
                   className="mt-6 w-full py-3.5 font-josefin font-bold uppercase tracking-widest text-xs"
                   style={{ background: "#1D9E75", color: "#000", borderRadius: "4px", letterSpacing: "2px", fontSize: "12px", border: "none", cursor: "pointer" }}
                 >
-                  Close
+                  Continue Shopping
+                </button>
+              </div>
+            )}
+
+            {/* Failed */}
+            {step === "failed" && (
+              <div className="text-center py-6">
+                <div className="flex justify-center mb-4">
+                  <div className="flex h-16 w-16 items-center justify-center rounded-full" style={{ background: "rgba(248,113,113,0.1)" }}>
+                    <span className="text-3xl" style={{ color: "#f87171" }}>&#10007;</span>
+                  </div>
+                </div>
+                <p className="text-[14px] mb-2" style={{ color: "rgba(255,255,255,0.8)" }}>Payment failed.</p>
+                <p className="text-[11px]" style={{ color: "rgba(255,255,255,0.4)" }}>Please try again.</p>
+                <button
+                  type="button"
+                  onClick={() => setStep("address")}
+                  className="mt-6 w-full py-3.5 font-josefin font-bold uppercase tracking-widest text-xs"
+                  style={{ background: "#1D9E75", color: "#000", borderRadius: "4px", letterSpacing: "2px", fontSize: "12px", border: "none", cursor: "pointer" }}
+                >
+                  Try Again
                 </button>
               </div>
             )}
