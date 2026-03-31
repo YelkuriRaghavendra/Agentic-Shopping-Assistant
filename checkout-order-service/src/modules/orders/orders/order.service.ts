@@ -64,7 +64,7 @@ export class OrderService {
 
       // 2. Insert initial status history
       const history = em.create(OrderStatusHistory, {
-        orderId: savedOrder.orderId,
+        order: savedOrder,
         fromStatus: null,
         toStatus: UcpOrderStatus.PROCESSING,
         source: 'system',
@@ -174,7 +174,7 @@ export class OrderService {
 
       // Status history
       await em.save(OrderStatusHistory, {
-        orderId,
+        order: { orderId },
         fromStatus: UcpOrderStatus.PROCESSING,
         toStatus: UcpOrderStatus.CANCELLED,
         source: 'api',
@@ -270,7 +270,7 @@ export class OrderService {
 
       // Status history
       await em.save(OrderStatusHistory, {
-        orderId,
+        order: { orderId },
         fromStatus: UcpOrderStatus.FULFILLED,
         toStatus: UcpOrderStatus.RETURN_REQUESTED,
         source: 'api',

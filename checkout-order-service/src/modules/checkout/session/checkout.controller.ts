@@ -145,7 +145,7 @@ export class CheckoutController {
         <div class="total-row"><span>Tax</span><span>₹${centsToDisplay(taxCents)}</span></div>
         <div class="total-row grand-total"><span>Total</span><span>₹${centsToDisplay(grandTotalCents)}</span></div>
       </div>
-      <button class="btn" onclick="completePurchase()">Complete Purchase</button>
+      <button class="btn" id="complete-btn" onclick="completePurchase()">Complete Purchase</button>
       <button class="btn btn-secondary" onclick="window.close()">Cancel</button>
     </div>
     <div id="success" class="success">
@@ -157,9 +157,15 @@ export class CheckoutController {
     </div>
   </div>
   <script>
+    const SESSION_ID = '${id}';
+    const BASE_URL = window.location.origin;
+
     async function completePurchase() {
+      const btn = document.getElementById('complete-btn');
+      btn.disabled = true;
+      btn.textContent = 'Processing...';
       try {
-        const res = await fetch('/commerce/checkout-sessions/${id}/complete', {
+        const res = await fetch(BASE_URL + '/commerce/checkout-sessions/' + SESSION_ID + '/complete', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ payment_instrument: { type: 'card', last4: '4242' } }),
@@ -167,11 +173,20 @@ export class CheckoutController {
         if (res.ok) {
           document.getElementById('checkout-form').style.display = 'none';
           document.getElementById('success').style.display = 'block';
+          // Notify the parent window (chat UI) that checkout is complete
+          if (window.opener) {
+            window.opener.postMessage({ type: 'checkout_complete', sessionId: SESSION_ID }, '*');
+          }
         } else {
-          alert('Payment failed. Please try again.');
+          const body = await res.json().catch(() => ({}));
+          alert(body.message || 'Payment failed. Please try again.');
+          btn.disabled = false;
+          btn.textContent = 'Complete Purchase';
         }
       } catch (e) {
         alert('Something went wrong. Please try again.');
+        btn.disabled = false;
+        btn.textContent = 'Complete Purchase';
       }
     }
   </script>

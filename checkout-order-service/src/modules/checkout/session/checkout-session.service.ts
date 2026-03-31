@@ -109,25 +109,39 @@ export class CheckoutSessionService {
     const session = await this.loadSession(sessionId);
     this.assertNotCanceled(session);
 
-    const idempotencyKey = randomUUID();
-
-    const ucpResponse = await this.ucpCheckoutClient.updateCheckoutSession(
-      session.merchantId,
-      session.ucpCheckoutId!,
-      { line_items: lineItems, buyer, context },
-      idempotencyKey,
-    );
-
+    const skipUcp = process.env.SKIP_UCP_OUTBOUND === 'true';
     const fromStatus = session.ucpStatus;
+
     session.lineItemsSnapshot = lineItems;
     session.buyerSnapshot = buyer ?? null;
     session.contextSnapshot = context ?? null;
-    session.totalsSnapshot = ucpResponse.totals ?? null;
-    session.ucpStatus = ucpResponse.status as UcpCheckoutStatus;
-    session.continueUrl = ucpResponse.continue_url ?? null;
 
-    await this.sessionRepo.save(session);
-    await this.reactToStatus(session, fromStatus, ucpResponse.status as UcpCheckoutStatus, null);
+    if (skipUcp) {
+      // Local dev: update line items locally, keep requires_escalation status
+      const subtotalCents = lineItems.reduce(
+        (sum, li) => sum + (li.item.price ?? 0) * (li.quantity ?? 1),
+        0,
+      );
+      session.totalsSnapshot = {
+        subtotal_cents: subtotalCents,
+        tax_cents: 0,
+        grand_total_cents: subtotalCents,
+      };
+      await this.sessionRepo.save(session);
+    } else {
+      const idempotencyKey = randomUUID();
+      const ucpResponse = await this.ucpCheckoutClient.updateCheckoutSession(
+        session.merchantId,
+        session.ucpCheckoutId!,
+        { line_items: lineItems, buyer, context },
+        idempotencyKey,
+      );
+      session.totalsSnapshot = ucpResponse.totals ?? null;
+      session.ucpStatus = ucpResponse.status as UcpCheckoutStatus;
+      session.continueUrl = ucpResponse.continue_url ?? null;
+      await this.sessionRepo.save(session);
+      await this.reactToStatus(session, fromStatus, ucpResponse.status as UcpCheckoutStatus, null);
+    }
 
     return session;
   }
@@ -174,18 +188,20 @@ export class CheckoutSessionService {
     const session = await this.loadSession(sessionId);
     this.assertNotCanceled(session);
 
-    const idempotencyKey = randomUUID();
-
-    await this.ucpCheckoutClient.cancelCheckoutSession(
-      session.merchantId,
-      session.ucpCheckoutId!,
-      idempotencyKey,
-    );
-
+    const skipUcp = process.env.SKIP_UCP_OUTBOUND === 'true';
     const fromStatus = session.ucpStatus;
+
+    if (!skipUcp) {
+      const idempotencyKey = randomUUID();
+      await this.ucpCheckoutClient.cancelCheckoutSession(
+        session.merchantId,
+        session.ucpCheckoutId!,
+        idempotencyKey,
+      );
+    }
+
     session.ucpStatus = UcpCheckoutStatus.CANCELED;
     await this.sessionRepo.save(session);
-
     this.emitStatusLog(session.sessionId, fromStatus, UcpCheckoutStatus.CANCELED);
 
     return session;

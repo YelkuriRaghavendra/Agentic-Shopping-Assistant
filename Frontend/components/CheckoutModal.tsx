@@ -73,14 +73,27 @@ export function CheckoutModal({ open, checkoutData, onClose, onComplete }: Check
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          payment_instrument: { type: "card", last4: cardNumber.slice(-4) },
+          payment_instrument: {
+            type: "card",
+            last4: cardNumber.slice(-4),
+            // Address collected in the form
+            billing_address: {
+              name: fullName,
+              line1: addressLine,
+              city,
+              state,
+              postal_code: pincode,
+              phone,
+            },
+          },
         }),
       });
       if (res.ok) {
         setStep("success");
         onComplete();
       } else {
-        alert("Payment failed. Please try again.");
+        const body = await res.json().catch(() => ({}));
+        alert(body?.message || "Payment failed. Please try again.");
       }
     } catch {
       alert("Something went wrong. Please try again.");

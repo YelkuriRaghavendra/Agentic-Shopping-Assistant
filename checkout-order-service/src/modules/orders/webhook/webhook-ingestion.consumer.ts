@@ -158,7 +158,7 @@ export class WebhookIngestionConsumer {
       // Write status history
       if (newStatus && newStatus !== fromStatus) {
         await em.save(OrderStatusHistory, {
-          orderId: order.orderId,
+          order: { orderId: order.orderId },
           fromStatus,
           toStatus: newStatus,
           source: 'webhook',

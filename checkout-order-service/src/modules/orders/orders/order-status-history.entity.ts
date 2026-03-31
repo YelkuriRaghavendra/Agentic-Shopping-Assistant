@@ -2,8 +2,10 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
+  RelationId,
 } from 'typeorm'
 import { Order } from './order.entity'
 
@@ -12,7 +14,8 @@ export class OrderStatusHistory {
   @PrimaryGeneratedColumn('uuid', { name: 'history_id' })
   historyId: string
 
-  @Column({ name: 'order_id', type: 'uuid' })
+  // The FK column — owned by the @ManyToOne relation below
+  @RelationId((h: OrderStatusHistory) => h.order)
   orderId: string
 
   @Column({ name: 'from_status', type: 'varchar', nullable: true })
@@ -34,5 +37,6 @@ export class OrderStatusHistory {
   createdAt: Date
 
   @ManyToOne(() => Order, (order) => order.statusHistory, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'order_id' })
   order: Order
 }
