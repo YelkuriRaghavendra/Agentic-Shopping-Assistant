@@ -34,6 +34,7 @@ interface UseChatReturn {
   activeSessionId: string | null;
   error: string | null;
   bottomRef: React.RefObject<HTMLDivElement>;
+  nodeStatus: string;
 }
 
 function generateId(): string {
@@ -51,6 +52,7 @@ export function useChat(
   const [activeSessionId, setActiveSessionId] = useState<string | null>(sessionId);
   const [sessionEnded, setSessionEnded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [nodeStatus, setNodeStatus] = useState("");
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const loadingRef = useRef(false);
 
@@ -255,6 +257,7 @@ export function useChat(
       setMessages((prev) => [...prev, botMessage]);
 
       setIsTyping(true);
+      setNodeStatus("");
       try {
         const res = await fetch(endpoints.chatStream, {
           method: "POST",
@@ -367,6 +370,8 @@ export function useChat(
                   )
                 );
                 scrollToBottom();
+              } else if (event.type === "node_progress") {
+                setNodeStatus(event.status || "");
               } else if (event.type === "error") {
                 setMessages((prev) =>
                   prev.map((m) =>
@@ -400,6 +405,7 @@ export function useChat(
       } finally {
         setIsTyping(false);
         setLoading(false);
+        setNodeStatus("");
       }
     },
     [sessionEnded, customerId, activeSessionId, scrollToBottom, setLoading, syncSession]
@@ -432,6 +438,7 @@ export function useChat(
       };
 
       setIsTyping(true);
+      setNodeStatus("");
       try {
         const res = await fetch(endpoints.chatStream, {
           method: "POST",
@@ -517,6 +524,8 @@ export function useChat(
                   )
                 );
                 scrollToBottom();
+              } else if (event.type === "node_progress") {
+                setNodeStatus(event.status || "");
               } else if (event.type === "error") {
                 setMessages((prev) =>
                   prev.map((m) => (m.id === botId ? { ...m, content: event.content, streamDone: true } : m))
@@ -547,6 +556,7 @@ export function useChat(
       } finally {
         setIsTyping(false);
         setLoading(false);
+        setNodeStatus("");
       }
     },
     [sessionEnded, customerId, activeSessionId, scrollToBottom, setLoading, syncSession]
@@ -598,5 +608,6 @@ export function useChat(
     activeSessionId,
     error,
     bottomRef,
+    nodeStatus,
   };
 }
