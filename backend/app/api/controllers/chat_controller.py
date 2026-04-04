@@ -101,6 +101,34 @@ class ChatController:
     Methods map 1:1 to routes registered in routes/v1/chat.py.
     """
 
+    async def send_message_graph(
+        self,
+        request: ChatRequest,
+        db: AsyncSession = Depends(get_db),
+    ) -> ChatResponse:
+        """
+        LangGraph-powered chat endpoint.
+        Uses the declarative state graph instead of the monolithic pipeline.
+        """
+        import time as _time
+        from app.graph import create_agent
+
+        try:
+            agent = create_agent(db)
+            result = await agent.ainvoke(
+                {"request": request, "t_start": _time.monotonic()},
+                config={"configurable": {"thread_id": str(request.session_id or "default")}},
+            )
+            response = result.get("response")
+            if response is None:
+                raise HTTPException(status_code=500, detail="Agent returned no response")
+            return response
+        except HTTPException:
+            raise
+        except Exception as exc:
+            logger.error("controller.graph_error", error=str(exc))
+            raise HTTPException(status_code=500, detail="An unexpected error occurred.")
+
     async def send_message(
         self,
         request: ChatRequest,
