@@ -52,7 +52,7 @@ class NodeDeps:
         self.db = db
         self.llm = LLMClient()
         self.rag = RAGClient()
-        self.rate_limiter = RateLimiterService(db)
+        self.rate_limiter = RateLimiterService()
         self.guardrails = GuardrailsService()
         self.memory = MemoryService(SessionRepository(db), CustomerRepository(db))
         self.prompt = PromptBuilderService()
@@ -419,10 +419,6 @@ async def persist(state: AgentState, deps: NodeDeps) -> dict:
 # ═════════════════════════════════════════════════════════════════════════════
 
 async def _resolve_session(deps: NodeDeps, request: ChatRequest):
-    if request.session_id:
-        session = await deps.session_repo.get(request.session_id)
-        if session:
-            return session
     if request.customer_id:
         session, _ = await deps.session_repo.get_or_create(
             customer_id=request.customer_id, channel=request.channel,

@@ -47,14 +47,11 @@ async def stream_graph(request: ChatRequest, db) -> AsyncIterator[str]:
         t_start = time.monotonic()
 
         # Run the graph and collect state updates
-        config = {"configurable": {"thread_id": str(request.session_id or "default")}}
-
         # Stream node-by-node execution
         prev_node_status = ""
 
         async for event in agent.astream(
             {"request": request, "t_start": t_start},
-            config=config,
             stream_mode="updates",
         ):
             # event is {node_name: {partial_state_update}}

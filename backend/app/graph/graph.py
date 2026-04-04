@@ -144,8 +144,10 @@ def create_agent(db):
 
     deps = NodeDeps(db)
     graph = build_graph(deps)
-    checkpointer = _get_checkpointer()
-    compiled = graph.compile(checkpointer=checkpointer)
+    # Note: Checkpointing disabled because AgentState contains non-serializable
+    # ORM objects (Session). State is already persisted via our repositories.
+    # To enable, store only session_id in state and re-fetch in each node.
+    compiled = graph.compile()
 
     logger.info("graph.compiled", nodes=len(compiled.nodes))
     return compiled
