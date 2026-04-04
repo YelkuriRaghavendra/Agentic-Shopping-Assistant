@@ -322,7 +322,22 @@ async def process_output(state: AgentState, deps: NodeDeps) -> dict:
     answer, answer_html, cited = deps.citations.process(final_text, citation_map)
     suggestions = build_suggestions(llm_result.suggestions)
 
-    logger.info("node.process_output", citations=len(cited), guard=guard_status)
+    # Fallback: if LLM didn't produce suggestions, generate them separately
+    if not suggestions:
+        try:
+            from app.config.loader import prompts
+            fallback_result = await deps.llm.generate(
+                system_prompt=prompts()["inline"]["suggestions"],
+                user_message=state["request"].message,
+                history=[],
+                tool_result_summary=final_text,
+                tool_name="direct_answer",
+            )
+            suggestions = build_suggestions(fallback_result.suggestions)
+        except Exception:
+            suggestions = []
+
+    logger.info("node.process_output", citations=len(cited), suggestions=len(suggestions), guard=guard_status)
     return {
         "answer": answer,
         "answer_html": answer_html,

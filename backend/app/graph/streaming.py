@@ -77,21 +77,18 @@ async def stream_graph(request: ChatRequest, db) -> AsyncIterator[str]:
                         yield _sse({"type": "token", "content": token})
                         await asyncio.sleep(0.02)
 
-                    # Emit done event with full metadata
+                    # Serialize the full response to dict for clean JSON
+                    resp_dict = response.model_dump() if hasattr(response, "model_dump") else {}
                     done_data = {
                         "type": "done",
-                        "message_id": str(response.message_id) if hasattr(response, "message_id") else "",
-                        "session_id": str(response.session_id) if hasattr(response, "session_id") else "",
-                        "answer_html": response.answer_html if hasattr(response, "answer_html") else answer,
-                        "cited_products": (
-                            [p.model_dump() if hasattr(p, "model_dump") else p for p in response.cited_products]
-                            if hasattr(response, "cited_products") and response.cited_products
-                            else []
-                        ),
-                        "suggestions": response.suggestions if hasattr(response, "suggestions") else [],
-                        "intent": response.intent if hasattr(response, "intent") else "",
-                        "checkout_data": response.checkout_data if hasattr(response, "checkout_data") else None,
-                        "continue_url": response.continue_url if hasattr(response, "continue_url") else None,
+                        "message_id": str(resp_dict.get("message_id", "")),
+                        "session_id": str(resp_dict.get("session_id", "")),
+                        "answer_html": resp_dict.get("answer_html", answer),
+                        "cited_products": resp_dict.get("cited_products", []),
+                        "suggestions": resp_dict.get("suggestions", []),
+                        "intent": resp_dict.get("intent", ""),
+                        "checkout_data": resp_dict.get("checkout_data"),
+                        "continue_url": resp_dict.get("continue_url"),
                     }
                     yield _sse(done_data)
 
