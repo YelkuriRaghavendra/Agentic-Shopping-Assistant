@@ -33,6 +33,16 @@ router.post(
     ),
 )(chat_controller.send_message)
 
+# ── LangGraph-powered chat endpoint ──────────────────────────────────────────
+router.post(
+    "/graph",
+    summary="Send a message (LangGraph agent)",
+    description=(
+        "LangGraph-powered agentic endpoint with state checkpointing. "
+        "Same functionality as /chat but uses a declarative state graph."
+    ),
+)(chat_controller.send_message_graph)
+
 # ── Streaming chat endpoint ──────────────────────────────────────────────────
 router.post(
     "/stream",
