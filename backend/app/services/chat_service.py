@@ -297,6 +297,7 @@ class ChatService:
                 session=session,
                 request=request,
                 slots=slots,
+                customer_profile=customer_profile,
                 t_start=t_start,
             )
             if commerce_response is not None:
@@ -314,11 +315,11 @@ class ChatService:
         )
         skill_result = self._skills.resolve(skill_ctx)
 
-        # ── 9. LLM tool decision (skill prompts injected) ─────────────────
+        # ── 9. LLM tool decision (skill prompts + slot status injected) ───
+        slot_status = self._build_slot_status(slots)
+        tool_system_prompt = TOOL_SELECTION_PROMPT + "\n\n" + slot_status
         if skill_result.prompt_addon:
-            tool_system_prompt = TOOL_SELECTION_PROMPT + "\n\n" + skill_result.prompt_addon
-        else:
-            tool_system_prompt = TOOL_SELECTION_PROMPT
+            tool_system_prompt += "\n\n" + skill_result.prompt_addon
         active_tools = TOOL_DEFINITIONS + skill_result.extra_tools
 
         # Token-budget-aware history trimming:
@@ -711,6 +712,7 @@ class ChatService:
                 session=session,
                 request=request,
                 slots=slots,
+                customer_profile=customer_profile,
                 t_start=t_start,
             )
             if commerce_response is not None:
@@ -742,8 +744,10 @@ class ChatService:
         )
         skill_result = self._skills.resolve(skill_ctx)
 
-        tool_system_prompt = (TOOL_SELECTION_PROMPT + "\n\n" + skill_result.prompt_addon
-                              if skill_result.prompt_addon else TOOL_SELECTION_PROMPT)
+        slot_status = self._build_slot_status(slots)
+        tool_system_prompt = TOOL_SELECTION_PROMPT + "\n\n" + slot_status
+        if skill_result.prompt_addon:
+            tool_system_prompt += "\n\n" + skill_result.prompt_addon
         active_tools = TOOL_DEFINITIONS + skill_result.extra_tools
 
         candidates = conversation.recent_turns[-6:]
@@ -1047,6 +1051,65 @@ class ChatService:
 
         return slots
 
+    def _build_slot_status(self, slots: SlotState) -> str:
+        """
+        Build a human-readable summary of collected slots for the LLM.
+        Tells the LLM what's been gathered and whether it's enough to search.
+        """
+        br = business_rules()
+        unlimited = br["budget"]["unlimited_sentinel"]
+
+        cat = slots.category or slots.use_case or "not yet asked"
+        brand = slots.brand if slots.brand and slots.brand.lower() != "any" else (
+            "no preference" if slots.brand and slots.brand.lower() == "any" else "not yet asked"
+        )
+        budget = (
+            f"under ${int(slots.budget)}" if slots.budget and slots.budget < unlimited
+            else ("no limit" if slots.budget else "not yet asked")
+        )
+        color = slots.color or "not yet asked"
+        size = slots.size or "not yet asked"
+
+        has_type = bool(slots.category or slots.use_case)
+        has_brand = bool(slots.brand)
+        has_budget = bool(slots.budget)
+        has_size = bool(slots.size)
+        has_color = bool(slots.color)
+        filled_count = sum([has_brand, has_budget, has_size, has_color])
+        ready = has_type and filled_count >= 2
+
+        lines = [
+            "CUSTOMER PREFERENCES COLLECTED:",
+            f"- Type: {cat}",
+            f"- Brand: {brand}",
+            f"- Budget: {budget}",
+            f"- Color: {color}",
+            f"- Size: {size}",
+        ]
+
+        if ready:
+            reasons = []
+            if has_type:
+                reasons.append("type")
+            if has_brand:
+                reasons.append("brand")
+            if has_budget:
+                reasons.append("budget")
+            if has_size:
+                reasons.append("size")
+            if has_color:
+                reasons.append("color")
+            lines.append(f"→ You have enough to search ({' + '.join(reasons)}). Call search_products.")
+        else:
+            if not has_type:
+                lines.append("→ Not enough info yet. Ask what TYPE of shoes they want.")
+            elif filled_count == 0:
+                lines.append("→ Have type only. Ask about their BRAND preference or BUDGET range next. Do NOT search yet.")
+            else:
+                lines.append("→ Have type + 1 preference. Ask ONE more question (brand, budget, size, or color) before searching.")
+
+        return "\n".join(lines)
+
     def _enrich_tool_args(
         self,
         tool_name: str,
@@ -1111,7 +1174,8 @@ class ChatService:
         session: Session,
         request: ChatRequest,
         slots: SlotState,
-        t_start: float,
+        customer_profile: dict | None = None,
+        t_start: float = 0.0,
     ) -> ChatResponse | None:
         """
         Route a commerce intent through feature flags → slot validation → CommerceClient.
@@ -1176,7 +1240,7 @@ class ChatService:
             return await self._error_response(session, request, t_start)
 
         # ── Format response ───────────────────────────────────────────────
-        answer = self._format_commerce_response(commerce_intent, service_response)
+        answer = self._format_commerce_response(commerce_intent, service_response, customer_profile)
         response = await self._direct_response(session, request, answer, commerce_intent, t_start)
 
         # Attach checkout metadata for the frontend
@@ -1200,6 +1264,13 @@ class ChatService:
                 checkout_data["line_items"] = line_items
                 checkout_data["totals"] = totals
                 checkout_data["checkout_session_id"] = session_id
+
+                # Attach saved addresses from customer profile
+                if customer_profile:
+                    saved_addresses = customer_profile.get("addresses", [])
+                    if saved_addresses:
+                        checkout_data["saved_addresses"] = saved_addresses
+
                 response.checkout_data = checkout_data
 
         return response
@@ -1408,7 +1479,9 @@ class ChatService:
                 error_message=f"Unknown commerce intent: {intent}",
             )
 
-    def _format_commerce_response(self, intent: str, response) -> str:
+    def _format_commerce_response(
+        self, intent: str, response, customer_profile: dict | None = None,
+    ) -> str:
         """
         Format a CommerceResponse into a natural language reply.
         When requires_escalation, format continue_url as a clickable markdown link.
@@ -1427,9 +1500,28 @@ class ChatService:
                 qty = li.get("quantity", 1)
                 items_desc.append(f"{title} x {qty}")
             items_summary = ", ".join(items_desc) if items_desc else "your selected items"
+
+            # Mention saved address if available
+            address_hint = ""
+            if customer_profile:
+                saved_addresses = customer_profile.get("addresses", [])
+                if saved_addresses:
+                    default_addr = next(
+                        (a for a in saved_addresses if a.get("is_default")),
+                        saved_addresses[0],
+                    )
+                    city = default_addr.get("city", "")
+                    label = default_addr.get("label", "")
+                    addr_desc = f"{label} ({city})" if label and city else city or label or "your saved address"
+                    address_hint = (
+                        f" I see you have a saved delivery address: {addr_desc}."
+                        " You can use it or enter a new one in the checkout."
+                    )
+
             return (
-                f"Great! I've prepared your checkout for {items_summary}. "
-                "Click the button below to complete your purchase with shipping and payment details."
+                f"Great! I've prepared your checkout for {items_summary}."
+                f"{address_hint} "
+                "Click the button below to complete your purchase."
             )
 
         if not response.success:

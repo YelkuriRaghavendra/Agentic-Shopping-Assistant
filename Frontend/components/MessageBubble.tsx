@@ -6,6 +6,7 @@ import { cn, formatTimestamp } from "@/lib/utils";
 import { sanitizeHtml } from "@/lib/sanitize";
 import { ProductSlider } from "@/components/ProductSlider";
 import { SuggestionChips } from "@/components/SuggestionChips";
+import { OrderConfirmationCard } from "@/components/OrderConfirmationCard";
 import type { ChatMessageUI, ProductCardDTO } from "@/types/chat.types";
 
 export interface MessageBubbleProps {
@@ -79,6 +80,11 @@ export const MessageBubble = memo(function MessageBubble({ message, onSelectProd
         {/* Product slider */}
         {!isUser && message.citedProducts && message.citedProducts.length > 0 && onSelectProduct && (
           <ProductSlider products={message.citedProducts} onSelectProduct={onSelectProduct} onCompareProducts={onCompareProducts} />
+        )}
+
+        {/* Order Confirmation Card */}
+        {!isUser && message.orderConfirmation && (
+          <OrderConfirmationCard order={message.orderConfirmation} />
         )}
 
         {/* Checkout CTA */}

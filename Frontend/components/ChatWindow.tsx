@@ -6,7 +6,8 @@ import { MessageBubble } from "./MessageBubble";
 import { ChatInput } from "./ChatInput";
 import { TypingIndicator } from "./TypingIndicator";
 import { CheckoutModal } from "./CheckoutModal";
-import type { ChatMessageUI, ProductCardDTO, CheckoutData } from "@/types/chat.types";
+import type { ChatMessageUI, ProductCardDTO, CheckoutData, OrderConfirmation } from "@/types/chat.types";
+
 import type React from "react";
 
 export interface ChatWindowProps {
@@ -20,6 +21,9 @@ export interface ChatWindowProps {
   sessionEnded: boolean;
   bottomRef: React.RefObject<HTMLDivElement>;
   isHistoryLoading?: boolean;
+  customerId?: string | null;
+  updateProfile?: (profile: Record<string, unknown>) => Promise<void>;
+  addOrderConfirmation?: (order: OrderConfirmation) => void;
 }
 
 function HistorySkeleton() {
@@ -43,6 +47,9 @@ export function ChatWindow({
   sessionEnded,
   bottomRef,
   isHistoryLoading = false,
+  customerId,
+  updateProfile,
+  addOrderConfirmation,
 }: ChatWindowProps) {
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [checkoutData, setCheckoutData] = useState<CheckoutData | null>(null);
@@ -138,9 +145,15 @@ export function ChatWindow({
         <CheckoutModal
           open={checkoutOpen}
           checkoutData={checkoutData}
+          customerId={customerId ?? undefined}
+          updateProfile={updateProfile}
           onClose={() => setCheckoutOpen(false)}
-          onComplete={() => {
-            sendMessage("My order has been placed successfully!");
+          onComplete={(orderInfo) => {
+            if (orderInfo && addOrderConfirmation) {
+              addOrderConfirmation(orderInfo);
+            } else {
+              sendMessage("My order has been placed successfully!");
+            }
           }}
         />
       )}

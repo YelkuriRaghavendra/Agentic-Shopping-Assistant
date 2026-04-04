@@ -11,6 +11,7 @@ export const endpoints = {
   chatStream:       `${apiBaseUrl}${API_PREFIX}/chat/stream`,
   createCustomer:   `${apiBaseUrl}${API_PREFIX}/chat/customers`,
   getCustomer:      (id: string) => `${apiBaseUrl}${API_PREFIX}/chat/customers/${id}`,
+  updateCustomerProfile: (id: string) => `${apiBaseUrl}${API_PREFIX}/chat/customers/${id}/profile`,
   customerSessions: (id: string) => `${apiBaseUrl}${API_PREFIX}/chat/customers/${id}/sessions`,
   createSession:    `${apiBaseUrl}${API_PREFIX}/chat/sessions`,
   getSession:       (id: string) => `${apiBaseUrl}${API_PREFIX}/chat/sessions/${id}`,

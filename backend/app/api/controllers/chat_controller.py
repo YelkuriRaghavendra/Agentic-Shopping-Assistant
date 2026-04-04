@@ -269,6 +269,27 @@ class ChatController:
             raise HTTPException(status_code=404, detail="Customer not found.")
         return CustomerResponse.model_validate(customer)
 
+    async def update_customer_profile(
+        self,
+        customer_id: uuid.UUID,
+        request: Request,
+        db: AsyncSession = Depends(get_db),
+    ) -> CustomerResponse:
+        """Update customer profile (merge). Used to save addresses, preferences, etc."""
+        body = await request.json()
+        profile_data = body.get("profile", {})
+        if not profile_data:
+            raise HTTPException(status_code=400, detail="profile field is required.")
+        repo = CustomerRepository(db)
+        customer = await repo.get_by_id(customer_id)
+        if not customer:
+            raise HTTPException(status_code=404, detail="Customer not found.")
+        await repo.update_profile(customer_id, profile_data)
+        await db.commit()
+        # Re-fetch to return updated state
+        customer = await repo.get_by_id(customer_id)
+        return CustomerResponse.model_validate(customer)
+
     async def add_feedback(
         self,
         session_id: uuid.UUID,

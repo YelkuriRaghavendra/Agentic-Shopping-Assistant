@@ -97,6 +97,9 @@ export default function ChatPage() {
           sessionEnded={chat.sessionEnded}
           bottomRef={chat.bottomRef}
           isHistoryLoading={chat.isHistoryLoading}
+          customerId={customer.customerId}
+          updateProfile={customer.updateProfile}
+          addOrderConfirmation={chat.addOrderConfirmation}
         />
       </div>
 

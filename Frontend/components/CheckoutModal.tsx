@@ -2,16 +2,18 @@
 
 import { useState, useEffect, useRef, type FormEvent } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import type { CheckoutData } from "@/types/chat.types";
+import type { CheckoutData, SavedAddress, OrderConfirmation } from "@/types/chat.types";
 
 interface CheckoutModalProps {
   open: boolean;
   checkoutData: CheckoutData;
+  customerId?: string;
+  updateProfile?: (profile: Record<string, unknown>) => Promise<void>;
   onClose: () => void;
-  onComplete: () => void;
+  onComplete: (orderInfo?: OrderConfirmation) => void;
 }
 
-type Step = "address" | "redirecting" | "awaiting" | "success" | "failed";
+type Step = "select-address" | "address" | "redirecting" | "awaiting" | "success" | "failed";
 
 const inputStyle = {
   background: "rgba(255,255,255,0.03)",
@@ -34,10 +36,21 @@ function centsToDisplay(cents: number): string {
   return (cents / 100).toFixed(2);
 }
 
-export function CheckoutModal({ open, checkoutData, onClose, onComplete }: CheckoutModalProps) {
-  const [step, setStep] = useState<Step>("address");
+export function CheckoutModal({
+  open,
+  checkoutData,
+  customerId,
+  updateProfile,
+  onClose,
+  onComplete,
+}: CheckoutModalProps) {
+  const savedAddresses = checkoutData.saved_addresses ?? [];
+  const hasAddresses = savedAddresses.length > 0;
+
+  const [step, setStep] = useState<Step>(hasAddresses ? "select-address" : "address");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [addressError, setAddressError] = useState<string | null>(null);
+  const [usedSavedAddress, setUsedSavedAddress] = useState(false);
 
   const [fullName, setFullName] = useState("");
   const [addressLine, setAddressLine] = useState("");
@@ -49,6 +62,15 @@ export function CheckoutModal({ open, checkoutData, onClose, onComplete }: Check
   const { line_items, totals, checkout_session_id } = checkoutData;
   const baseUrl = process.env.NEXT_PUBLIC_CHECKOUT_URL || "http://localhost:3001";
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Reset step when modal opens with new data
+  useEffect(() => {
+    if (open) {
+      setStep(hasAddresses ? "select-address" : "address");
+      setUsedSavedAddress(false);
+      setAddressError(null);
+    }
+  }, [open, hasAddresses]);
 
   // Poll session status every 3s while awaiting payment
   useEffect(() => {
@@ -70,7 +92,13 @@ export function CheckoutModal({ open, checkoutData, onClose, onComplete }: Check
         if (status === "completed") {
           clearInterval(pollRef.current!);
           setStep("success");
-          onComplete();
+          const orderInfo: OrderConfirmation = {
+            order_id: session.ucpOrderId ?? session.ucp_order_id ?? checkout_session_id,
+            line_items: line_items,
+            totals: totals,
+            status: "processing",
+          };
+          onComplete(orderInfo);
         } else if (status === "payment_failed") {
           clearInterval(pollRef.current!);
           setStep("failed");
@@ -84,10 +112,51 @@ export function CheckoutModal({ open, checkoutData, onClose, onComplete }: Check
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [step, baseUrl, checkout_session_id, onComplete]);
 
-  const handleAddressSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!fullName.trim() || !addressLine.trim() || !city.trim() || !pincode.trim()) return;
+  // Save address to profile after successful checkout (only if manually entered)
+  useEffect(() => {
+    if (step !== "success" || usedSavedAddress || !updateProfile || !customerId) return;
+    if (!fullName.trim() || !addressLine.trim()) return;
 
+    const newAddress: SavedAddress = {
+      id: `addr_${Date.now()}`,
+      label: "Home",
+      full_name: fullName.trim(),
+      address_line: addressLine.trim(),
+      city: city.trim(),
+      state: state.trim(),
+      pincode: pincode.trim(),
+      phone: phone.trim(),
+      is_default: savedAddresses.length === 0,
+    };
+
+    // Check if this address already exists (by address_line + pincode)
+    const exists = savedAddresses.some(
+      (a) => a.address_line === newAddress.address_line && a.pincode === newAddress.pincode
+    );
+    if (!exists) {
+      updateProfile({ addresses: [...savedAddresses, newAddress] });
+    }
+  // Run only once when step becomes "success"
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step]);
+
+  const selectSavedAddress = (addr: SavedAddress) => {
+    setFullName(addr.full_name);
+    setAddressLine(addr.address_line);
+    setCity(addr.city);
+    setState(addr.state);
+    setPincode(addr.pincode);
+    setPhone(addr.phone);
+    setUsedSavedAddress(true);
+  };
+
+  const handleUseSavedAddress = (addr: SavedAddress) => {
+    selectSavedAddress(addr);
+    // Skip address form, go straight to payment
+    proceedToPayment();
+  };
+
+  const proceedToPayment = async () => {
     setAddressError(null);
     setIsSubmitting(true);
     setStep("redirecting");
@@ -107,7 +176,6 @@ export function CheckoutModal({ open, checkoutData, onClose, onComplete }: Check
 
       const { url } = await res.json();
       window.open(url, "_blank");
-      // Start polling — order is confirmed only when webhook fires
       setStep("awaiting");
     } catch {
       setAddressError("Something went wrong. Please try again.");
@@ -117,9 +185,15 @@ export function CheckoutModal({ open, checkoutData, onClose, onComplete }: Check
     }
   };
 
+  const handleAddressSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!fullName.trim() || !addressLine.trim() || !city.trim() || !pincode.trim()) return;
+    await proceedToPayment();
+  };
+
   const handleClose = () => {
     if (pollRef.current) clearInterval(pollRef.current);
-    setStep("address");
+    setStep(hasAddresses ? "select-address" : "address");
     setAddressError(null);
     onClose();
   };
@@ -158,11 +232,11 @@ export function CheckoutModal({ open, checkoutData, onClose, onComplete }: Check
             </div>
 
             <h2 className="font-josefin font-bold uppercase tracking-widest text-lg mb-4" style={{ color: "#fff" }}>
-              {step === "success" ? "Order Confirmed" : step === "failed" ? "Payment Failed" : "Checkout"}
+              {step === "success" ? "Order Confirmed" : step === "failed" ? "Payment Failed" : step === "select-address" ? "Delivery Address" : "Checkout"}
             </h2>
 
             {/* Order Summary — show on address + awaiting steps */}
-            {(step === "address" || step === "redirecting" || step === "awaiting") && (
+            {(step === "select-address" || step === "address" || step === "redirecting" || step === "awaiting") && (
               <div className="mb-6 p-4 rounded-xl" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
                 <p className={labelStyle} style={labelColor}>Order Summary</p>
                 <div className="mt-3 space-y-2">
@@ -180,9 +254,75 @@ export function CheckoutModal({ open, checkoutData, onClose, onComplete }: Check
               </div>
             )}
 
+            {/* Select Saved Address Step */}
+            {step === "select-address" && (
+              <div className="flex flex-col gap-3">
+                <p className={labelStyle} style={labelColor}>Saved Addresses</p>
+                {savedAddresses.map((addr) => (
+                  <button
+                    key={addr.id}
+                    type="button"
+                    onClick={() => handleUseSavedAddress(addr)}
+                    className="w-full text-left p-4 rounded-xl transition-all duration-200 hover:scale-[1.01]"
+                    style={{
+                      background: "rgba(255,255,255,0.02)",
+                      border: "1px solid rgba(29,158,117,0.2)",
+                      cursor: "pointer",
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = "rgba(29,158,117,0.5)"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = "rgba(29,158,117,0.2)"; }}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[12px] font-semibold" style={{ color: "rgba(255,255,255,0.8)" }}>
+                        {addr.full_name}
+                      </span>
+                      {addr.is_default && (
+                        <span className="text-[9px] font-mono uppercase px-2 py-0.5 rounded-full"
+                          style={{ color: "#1D9E75", background: "rgba(29,158,117,0.1)", letterSpacing: "1px" }}>
+                          Default
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px]" style={{ color: "rgba(255,255,255,0.45)" }}>
+                      {addr.address_line}, {addr.city}{addr.state ? `, ${addr.state}` : ""} - {addr.pincode}
+                    </p>
+                    {addr.phone && (
+                      <p className="text-[10px] mt-1" style={{ color: "rgba(255,255,255,0.3)" }}>{addr.phone}</p>
+                    )}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => { setUsedSavedAddress(false); setStep("address"); }}
+                  className="w-full py-3 font-josefin font-bold uppercase tracking-widest text-xs mt-1"
+                  style={{
+                    background: "transparent",
+                    border: "1px solid rgba(255,255,255,0.1)",
+                    color: "rgba(255,255,255,0.5)",
+                    borderRadius: "4px",
+                    letterSpacing: "2px",
+                    fontSize: "11px",
+                    cursor: "pointer",
+                  }}
+                >
+                  + Enter New Address
+                </button>
+              </div>
+            )}
+
             {/* Address Step */}
             {step === "address" && (
               <form onSubmit={handleAddressSubmit} className="flex flex-col gap-3">
+                {hasAddresses && (
+                  <button
+                    type="button"
+                    onClick={() => setStep("select-address")}
+                    className="self-start text-[11px] mb-1"
+                    style={{ color: "rgba(29,158,117,0.8)", cursor: "pointer", background: "none", border: "none" }}
+                  >
+                    &larr; Use saved address
+                  </button>
+                )}
                 <div className="flex flex-col gap-1.5">
                   <label className={labelStyle} style={labelColor}>Full Name</label>
                   <input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="John Doe" required style={inputStyle}

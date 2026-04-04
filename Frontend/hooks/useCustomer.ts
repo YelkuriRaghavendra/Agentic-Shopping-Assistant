@@ -12,6 +12,7 @@ export interface UseCustomerReturn {
   dialogOpen: boolean;
   error: string | null;
   createCustomer: (name: string, email: string) => Promise<void>;
+  updateProfile: (profile: Record<string, unknown>) => Promise<void>;
   queueMessage: (text: string) => void;
   pendingMessage: string | null;
 }
@@ -64,6 +65,19 @@ export default function useCustomer(): UseCustomerReturn {
     }
   }, []);
 
+  const updateProfile = useCallback(async (profile: Record<string, unknown>) => {
+    if (!customer) return;
+    try {
+      const data = await httpClient.patch<CustomerResponse>(
+        endpoints.updateCustomerProfile(customer.customer_id),
+        { profile },
+      );
+      setCustomer(data);
+    } catch (err: unknown) {
+      console.error("Failed to update profile", err);
+    }
+  }, [customer]);
+
   const queueMessage = useCallback((text: string) => {
     setPendingMessage(text);
   }, []);
@@ -75,6 +89,7 @@ export default function useCustomer(): UseCustomerReturn {
     dialogOpen,
     error,
     createCustomer,
+    updateProfile,
     queueMessage,
     pendingMessage,
   };

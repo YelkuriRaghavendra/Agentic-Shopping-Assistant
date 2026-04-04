@@ -61,11 +61,25 @@ export function useSessions(customerId: string | null): UseSessionsReturn {
     const handler = (e: StorageEvent) => {
       if (e.key === "session_updated") {
         queryClient.invalidateQueries({ queryKey: ["sessions", customerId] });
+        // Also sync active session from URL in case it changed
+        const urlSession = getSessionFromUrl();
+        if (urlSession) setActiveSessionId(urlSession);
       }
     };
     window.addEventListener("storage", handler);
     return () => window.removeEventListener("storage", handler);
   }, [customerId, queryClient]);
+
+  // Listen for same-tab URL changes (e.g. from useChat syncing session_id)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const urlSession = getSessionFromUrl();
+      if (urlSession && urlSession !== activeSessionId) {
+        setActiveSessionId(urlSession);
+      }
+    }, 500);
+    return () => clearInterval(interval);
+  }, [activeSessionId]);
 
   return { sessions, activeSessionId, isLoading, selectSession, createSession };
 }

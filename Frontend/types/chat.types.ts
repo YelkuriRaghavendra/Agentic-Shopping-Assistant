@@ -109,10 +109,30 @@ export interface CheckoutLineItem {
   quantity: number;
 }
 
+export interface SavedAddress {
+  id: string;
+  label?: string;
+  full_name: string;
+  address_line: string;
+  city: string;
+  state: string;
+  pincode: string;
+  phone: string;
+  is_default: boolean;
+}
+
 export interface CheckoutData {
   line_items: CheckoutLineItem[];
   totals: { subtotal_cents: number; tax_cents: number; grand_total_cents: number };
   checkout_session_id: string;
+  saved_addresses?: SavedAddress[];
+}
+
+export interface OrderConfirmation {
+  order_id: string;
+  line_items: CheckoutLineItem[];
+  totals: { subtotal_cents: number; tax_cents: number; grand_total_cents: number };
+  status: string;
 }
 
 export interface ChatMessageUI {
@@ -126,4 +146,5 @@ export interface ChatMessageUI {
   streamDone?: boolean;
   continueUrl?: string;
   checkoutData?: CheckoutData;
+  orderConfirmation?: OrderConfirmation;
 }

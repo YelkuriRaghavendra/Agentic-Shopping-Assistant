@@ -84,6 +84,13 @@ router.get(
     summary="Get a customer",
 )(chat_controller.get_customer)
 
+router.patch(
+    "/customers/{customer_id}/profile",
+    response_model=CustomerResponse,
+    summary="Update customer profile",
+    description="Merge new data into the customer profile JSONB. Used to save addresses, preferences, etc.",
+)(chat_controller.update_customer_profile)
+
 router.get(
     "/customers/{customer_id}/sessions",
     response_model=list[SessionResponse],

@@ -11,13 +11,22 @@ import type {
   MessageHistoryResponse,
   ProductCardDTO,
   SessionResponse,
+  OrderConfirmation,
 } from "@/types/chat.types";
+
+/** Filter out products with missing or zero price */
+function filterValidProducts(products?: ProductCardDTO[]): ProductCardDTO[] | undefined {
+  if (!products || products.length === 0) return products;
+  const filtered = products.filter((p) => p.price != null && p.price > 0);
+  return filtered.length > 0 ? filtered : undefined;
+}
 
 interface UseChatReturn {
   messages: ChatMessageUI[];
   sendMessage: (text: string) => void;
   sendProductMessage: (productId: string, productName: string) => void;
   sendCompareMessage: (products: ProductCardDTO[]) => void;
+  addOrderConfirmation: (order: OrderConfirmation) => void;
   isLoading: boolean;
   isTyping: boolean;
   isHistoryLoading: boolean;
@@ -44,6 +53,21 @@ export function useChat(
   const [error, setError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const loadingRef = useRef(false);
+
+  /** Update active session and refresh sidebar when a new session is created */
+  const syncSession = useCallback((newSessionId: string) => {
+    setActiveSessionId((prev) => {
+      if (prev !== newSessionId) {
+        // New session detected — refresh sidebar list and sync URL
+        queryClient.invalidateQueries({ queryKey: ["sessions", customerId] });
+        localStorage.setItem("session_updated", Date.now().toString());
+        const url = new URL(window.location.href);
+        url.searchParams.set("session", newSessionId);
+        window.history.replaceState({}, "", url.toString());
+      }
+      return newSessionId;
+    });
+  }, [customerId, queryClient]);
 
   const setLoading = useCallback((val: boolean) => {
     loadingRef.current = val;
@@ -120,7 +144,7 @@ export function useChat(
             endpoints.createSession,
             { customer_id: customerId, channel: "web" }
           );
-          setActiveSessionId(newSession.session_id);
+          syncSession(newSession.session_id);
           setMessages([]);
           setSessionEnded(false);
           const infoMsg: ChatMessageUI = {
@@ -262,7 +286,7 @@ export function useChat(
                   const event = JSON.parse(jsonStr);
                   if (event.type === "done") {
                     const hasHtml = /<\/?(?:table|tr|td|th|ul|ol|li)\b/i.test(streamedContent);
-                    if (event.session_id) setActiveSessionId(event.session_id);
+                    if (event.session_id) syncSession(event.session_id);
                     if (event.checkout_data) console.log("[useChat] checkout_data from buffer:", event.checkout_data);
                     setMessages((prev) =>
                       prev.map((m) =>
@@ -272,7 +296,7 @@ export function useChat(
                               id: event.message_id || botId,
                               content: streamedContent,
                               answerHtml: hasHtml && event.answer_html ? event.answer_html : undefined,
-                              citedProducts: event.cited_products,
+                              citedProducts: filterValidProducts(event.cited_products),
                               suggestions: event.suggestions,
                               continueUrl: event.continue_url || undefined,
                               checkoutData: event.checkout_data || undefined,
@@ -313,7 +337,7 @@ export function useChat(
                 // Use answer_html if content has HTML tags (e.g. tables from comparisons)
                 const hasHtml = /<\/?(?:table|tr|td|th|ul|ol|li)\b/i.test(streamedContent);
                 if (event.session_id) {
-                  setActiveSessionId(event.session_id);
+                  syncSession(event.session_id);
                 }
                 // Debug checkout data
                 if (event.checkout_data) {
@@ -330,7 +354,7 @@ export function useChat(
                           id: event.message_id || botId,
                           content: streamedContent,
                           answerHtml: hasHtml && event.answer_html ? event.answer_html : undefined,
-                          citedProducts: event.cited_products,
+                          citedProducts: filterValidProducts(event.cited_products),
                           suggestions: event.suggestions,
                           continueUrl: event.continue_url || undefined,
                           checkoutData: event.checkout_data || undefined,
@@ -375,7 +399,7 @@ export function useChat(
         setLoading(false);
       }
     },
-    [sessionEnded, customerId, activeSessionId, scrollToBottom, setLoading]
+    [sessionEnded, customerId, activeSessionId, scrollToBottom, setLoading, syncSession]
   );
 
   // Shared streaming helper for product/compare messages
@@ -434,14 +458,14 @@ export function useChat(
                   const event = JSON.parse(line.slice(6).trim());
                   if (event.type === "done") {
                     const hasHtml = /<\/?(?:table|tr|td|th|ul|ol|li)\b/i.test(streamedContent);
-                    if (event.session_id) setActiveSessionId(event.session_id);
+                    if (event.session_id) syncSession(event.session_id);
                     setMessages((prev) =>
                       prev.map((m) =>
                         m.id === botId
                           ? {
                               ...m, id: event.message_id || botId, content: streamedContent,
                               answerHtml: hasHtml && event.answer_html ? event.answer_html : undefined,
-                              citedProducts: event.cited_products, suggestions: event.suggestions,
+                              citedProducts: filterValidProducts(event.cited_products), suggestions: event.suggestions,
                               continueUrl: event.continue_url || undefined,
                               checkoutData: event.checkout_data || undefined,
                               streamDone: true,
@@ -471,7 +495,7 @@ export function useChat(
                 scrollToBottom();
               } else if (event.type === "done") {
                 const hasHtml = /<\/?(?:table|tr|td|th|ul|ol|li)\b/i.test(streamedContent);
-                if (event.session_id) setActiveSessionId(event.session_id);
+                if (event.session_id) syncSession(event.session_id);
                 setMessages((prev) =>
                   prev.map((m) =>
                     m.id === botId
@@ -480,7 +504,7 @@ export function useChat(
                           id: event.message_id || botId,
                           content: streamedContent,
                           answerHtml: hasHtml && event.answer_html ? event.answer_html : undefined,
-                          citedProducts: event.cited_products,
+                          citedProducts: filterValidProducts(event.cited_products),
                           suggestions: event.suggestions,
                           continueUrl: event.continue_url || undefined,
                           checkoutData: event.checkout_data || undefined,
@@ -522,7 +546,7 @@ export function useChat(
         setLoading(false);
       }
     },
-    [sessionEnded, customerId, activeSessionId, scrollToBottom, setLoading]
+    [sessionEnded, customerId, activeSessionId, scrollToBottom, setLoading, syncSession]
   );
 
   const sendProductMessage = useCallback(
@@ -542,11 +566,28 @@ export function useChat(
     [streamRequest]
   );
 
+  const addOrderConfirmation = useCallback(
+    (order: OrderConfirmation) => {
+      const botMessage: ChatMessageUI = {
+        id: generateId(),
+        role: "bot",
+        content: "Your order has been confirmed! Here are the details:",
+        timestamp: new Date(),
+        orderConfirmation: order,
+        streamDone: true,
+      };
+      setMessages((prev) => [...prev, botMessage]);
+      setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+    },
+    []
+  );
+
   return {
     messages,
     sendMessage,
     sendProductMessage,
     sendCompareMessage,
+    addOrderConfirmation,
     isLoading,
     isTyping,
     isHistoryLoading,
