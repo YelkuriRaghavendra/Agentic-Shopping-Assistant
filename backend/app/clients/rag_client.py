@@ -65,7 +65,7 @@ class RAGClient(BaseHTTPClient):
             retrieval_filters: dict = {}
             if filters:
                 # Pass through all known filter keys
-                for key in ("brand", "category", "min_price", "max_price", "in_stock", "customer_id"):
+                for key in ("brand", "category", "color", "min_price", "max_price", "in_stock", "customer_id"):
                     if filters.get(key) is not None:
                         retrieval_filters[key] = filters[key]
                 # document_type can be passed as "doc_type" (legacy) or "document_type"

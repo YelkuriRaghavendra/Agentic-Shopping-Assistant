@@ -345,6 +345,7 @@ class ChatService:
                 user_message=request.message,
                 history=llm_history,
                 tools=active_tools,
+                image_base64=getattr(request, "image_base64", None),
             )
         except LLMError:
             return await self._error_response(session, request, t_start)
@@ -385,6 +386,7 @@ class ChatService:
                 history=llm_history,
                 tool_result_summary=tool_result.summary,
                 tool_name=tool_name,
+                image_base64=getattr(request, "image_base64", None),
             )
         except LLMError:
             return await self._error_response(session, request, t_start)
@@ -546,8 +548,9 @@ class ChatService:
             async for event in _stream_words(q):
                 yield event
             await self._persist_shortcut(session, request, q, intent, t_start)
+            suggestions = await self._generate_suggestions_only(request.message, q)
             yield _sse({"type": "done", "message_id": "", "answer_html": q,
-                        "cited_products": [], "suggestions": self._rule_based_suggestions(intent, tool_name, slots)})
+                        "cited_products": [], "suggestions": suggestions})
             return
 
         if tool_name == "direct_answer":
@@ -555,8 +558,9 @@ class ChatService:
             async for event in _stream_words(a):
                 yield event
             await self._persist_shortcut(session, request, a, intent, t_start)
+            suggestions = await self._generate_suggestions_only(request.message, a)
             yield _sse({"type": "done", "message_id": "", "answer_html": a,
-                        "cited_products": [], "suggestions": self._rule_based_suggestions(intent, tool_name, slots)})
+                        "cited_products": [], "suggestions": suggestions})
             return
 
         # ── Execute tool + build prompt ──────────────────────────────────
@@ -596,6 +600,7 @@ class ChatService:
                 history=llm_history,
                 tool_result_summary=tool_result.summary,
                 tool_name=tool_name,
+                image_base64=getattr(request, "image_base64", None),
             ):
                 full_text += token
                 yield _sse({"type": "token", "content": token})
@@ -766,6 +771,7 @@ class ChatService:
             user_message=request.message,
             history=llm_history,
             tools=active_tools,
+            image_base64=getattr(request, "image_base64", None),
         )
 
         return {
@@ -1076,7 +1082,7 @@ class ChatService:
         has_size = bool(slots.size)
         has_color = bool(slots.color)
         filled_count = sum([has_brand, has_budget, has_size, has_color])
-        ready = has_type and filled_count >= 2
+        ready = has_type and filled_count >= 1
 
         lines = [
             "CUSTOMER PREFERENCES COLLECTED:",
@@ -1099,14 +1105,12 @@ class ChatService:
                 reasons.append("size")
             if has_color:
                 reasons.append("color")
-            lines.append(f"→ You have enough to search ({' + '.join(reasons)}). Call search_products.")
+            lines.append(f"→ READY TO SEARCH. You have {' + '.join(reasons)}. Call search_products NOW. Do NOT ask any more questions.")
         else:
             if not has_type:
                 lines.append("→ Not enough info yet. Ask what TYPE of shoes they want.")
-            elif filled_count == 0:
-                lines.append("→ Have type only. Ask about their BRAND preference or BUDGET range next. Do NOT search yet.")
             else:
-                lines.append("→ Have type + 1 preference. Ask ONE more question (brand, budget, size, or color) before searching.")
+                lines.append("→ Have type only. Ask about their BRAND preference or BUDGET range next. Do NOT search yet.")
 
         return "\n".join(lines)
 

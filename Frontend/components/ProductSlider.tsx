@@ -41,7 +41,7 @@ export const ProductSlider = memo(function ProductSlider({ products, onSelectPro
 
   function handleSend() {
     if (selectedIds.size !== 1 || sending) return;
-    const id = [...selectedIds][0];
+    const id = Array.from(selectedIds)[0];
     const product = products.find((p) => p.productId === id);
     if (product) {
       setSending(true);

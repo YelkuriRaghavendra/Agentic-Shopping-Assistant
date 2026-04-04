@@ -151,12 +151,23 @@ class LLMClient:
             logger.error("llm_client.api_error", model=model, error=str(exc))
             raise LLMError(str(exc)) from exc
 
+    @staticmethod
+    def _build_user_content(text: str, image_base64: str | None = None) -> str | list[dict]:
+        """Build user message content, optionally including a vision image."""
+        if not image_base64:
+            return text
+        return [
+            {"type": "text", "text": text},
+            {"type": "image_url", "image_url": {"url": image_base64, "detail": "auto"}},
+        ]
+
     async def decide_tool(
         self,
         system_prompt: str,
         user_message: str,
         history: list[dict],
         tools: list[dict],
+        image_base64: str | None = None,
     ) -> ToolCall:
         """
         First LLM call in the agent loop.
@@ -166,7 +177,7 @@ class LLMClient:
         messages = [
             {"role": "system", "content": system_prompt},
             *history,
-            {"role": "user",   "content": user_message},
+            {"role": "user",   "content": self._build_user_content(user_message, image_base64)},
         ]
 
         response = None
@@ -217,6 +228,7 @@ class LLMClient:
         history: list[dict],
         tool_result_summary: str,
         tool_name: str,
+        image_base64: str | None = None,
     ) -> LLMResult:
         """
         Second LLM call — writes a natural language response
@@ -226,7 +238,7 @@ class LLMClient:
         messages = [
             {"role": "system", "content": system_prompt},
             *history,
-            {"role": "user",    "content": user_message},
+            {"role": "user",    "content": self._build_user_content(user_message, image_base64)},
             {
                 "role": "assistant",
                 "content": f"[Tool: {tool_name}]\n[Result]: {tool_result_summary}",
@@ -294,6 +306,7 @@ class LLMClient:
         history: list[dict],
         tool_result_summary: str,
         tool_name: str,
+        image_base64: str | None = None,
     ) -> AsyncIterator[str]:
         """
         Streaming version of generate().
@@ -309,7 +322,7 @@ class LLMClient:
         messages = [
             {"role": "system", "content": system_prompt},
             *history,
-            {"role": "user",    "content": user_message},
+            {"role": "user",    "content": self._build_user_content(user_message, image_base64)},
             {
                 "role": "assistant",
                 "content": f"[Tool: {tool_name}]\n[Result]: {tool_result_summary}",

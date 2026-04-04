@@ -13,6 +13,7 @@ export interface ChatRequest {
   session_id?: string;
   channel?: Channel;
   filters?: Record<string, unknown>;
+  image_base64?: string;
 }
 
 export interface CustomerCreateRequest {
@@ -140,6 +141,7 @@ export interface ChatMessageUI {
   role: MessageRole;
   content: string;
   answerHtml?: string;
+  imageBase64?: string;
   timestamp: Date;
   citedProducts?: ProductCardDTO[];
   suggestions?: SuggestionChip[];

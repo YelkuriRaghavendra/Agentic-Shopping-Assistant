@@ -36,11 +36,12 @@ class ChatRequest(BaseModel):
     This means the frontend only needs two fields:
       customer_id + message
     """
-    message:     str = Field(..., min_length=1, max_length=2000, description="Customer message")
-    customer_id: uuid.UUID | None = Field(None, description="Omit for anonymous/guest")
-    session_id:  uuid.UUID | None = Field(None, description="Omit to auto-resolve session")
-    channel:     Literal["WEB", "MOBILE", "WHATSAPP", "SDK"] = "WEB"
-    filters:     dict[str, Any] = Field(default_factory=dict, description="Optional RAG filters")
+    message:      str = Field(..., min_length=1, max_length=2000, description="Customer message")
+    customer_id:  uuid.UUID | None = Field(None, description="Omit for anonymous/guest")
+    session_id:   uuid.UUID | None = Field(None, description="Omit to auto-resolve session")
+    channel:      Literal["WEB", "MOBILE", "WHATSAPP", "SDK"] = "WEB"
+    filters:      dict[str, Any] = Field(default_factory=dict, description="Optional RAG filters")
+    image_base64: str | None = Field(None, max_length=2_000_000, description="Base64 data URL of an uploaded image")
 
     @field_validator("message")
     @classmethod

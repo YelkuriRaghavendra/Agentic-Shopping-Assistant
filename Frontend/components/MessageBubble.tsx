@@ -4,7 +4,22 @@ import { memo } from "react";
 import { motion } from "framer-motion";
 import { cn, formatTimestamp } from "@/lib/utils";
 import { sanitizeHtml } from "@/lib/sanitize";
+import { marked } from "marked";
 import { ProductSlider } from "@/components/ProductSlider";
+
+/** Convert markdown or raw HTML content to sanitized HTML */
+function renderContent(text: string): string {
+  // Replace literal \n with actual newlines (backend sometimes sends escaped)
+  let cleaned = text.replace(/\\n/g, "\n");
+
+  // If it already contains HTML tags, sanitize and return
+  if (/<\/?(?:table|tr|td|th|ul|ol|li|p|br|div|strong|em|a)\b/i.test(cleaned)) {
+    return sanitizeHtml(cleaned);
+  }
+  // Convert markdown to HTML, then sanitize
+  const html = marked.parse(cleaned, { async: false, breaks: true }) as string;
+  return sanitizeHtml(html);
+}
 import { SuggestionChips } from "@/components/SuggestionChips";
 import { OrderConfirmationCard } from "@/components/OrderConfirmationCard";
 import type { ChatMessageUI, ProductCardDTO } from "@/types/chat.types";
@@ -63,15 +78,29 @@ export const MessageBubble = memo(function MessageBubble({ message, onSelectProd
                 }
           }
         >
-          {message.answerHtml ? (
+          {/* Uploaded image */}
+          {isUser && message.imageBase64 && (
+            <img
+              src={message.imageBase64}
+              alt="Uploaded outfit"
+              className="rounded-lg mb-2"
+              style={{ maxWidth: 240, maxHeight: 240, objectFit: "cover" }}
+            />
+          )}
+          {!isUser && message.streamDone && message.content ? (
             <div
               className="prose prose-sm max-w-none"
               style={{ color: "rgba(255, 255, 255, 1)" }}
-              dangerouslySetInnerHTML={{ __html: sanitizeHtml(message.answerHtml) }}
+              suppressHydrationWarning
+              dangerouslySetInnerHTML={{
+                __html: message.answerHtml
+                  ? sanitizeHtml(message.answerHtml.replace(/\\n/g, "\n"))
+                  : renderContent(message.content),
+              }}
             />
           ) : (
             <>
-              {message.content || null}
+              {message.content?.replace(/\\n/g, "\n") || null}
               {!isUser && !message.streamDone && <span className="streaming-cursor" style={{ minHeight: 14 }} />}
             </>
           )}

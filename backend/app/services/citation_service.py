@@ -111,20 +111,8 @@ class CitationService:
 
         # Step 3: swap placeholders back to <a href> product chip HTML
         def _chip(match: re.Match) -> str:
-            cid = f"P{match.group(1)}"
-            if cid not in citation_map:
-                return ""
-            data  = citation_map[cid]
-            url   = html_module.escape(data.get("url", "#"))
-            title = html_module.escape(data.get("product_name", "Product"))
-            sku   = html_module.escape(str(data.get("sku", "")))
-            return (
-                f'<a href="{url}" '
-                f'class="product-chip" '
-                f'data-sku="{sku}" '
-                f'target="_blank" rel="noopener">'
-                f'{title} ↗</a>'
-            )
+            # Product name is already in the LLM text — just remove the marker
+            return ""
 
         answer_html = _PLACEHOLDER_RE.sub(_chip, answer_html)
 

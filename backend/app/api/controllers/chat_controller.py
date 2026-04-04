@@ -11,8 +11,11 @@ No SQL here.
 No LLM calls here.
 """
 
-from fastapi import Depends, HTTPException, Request, status
-from fastapi.responses import StreamingResponse
+import os
+import pathlib
+
+from fastapi import Depends, HTTPException, Request, UploadFile, status
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dto.chat_dto import (
@@ -309,6 +312,84 @@ class ChatController:
         )
         await db.commit()
         return FeedbackResponse.model_validate(feedback)
+
+
+    # ── Image upload ────────────────────────────────────────────────────────────
+
+    UPLOAD_DIR = pathlib.Path("/tmp/vikrai-uploads")
+    MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5 MB
+    ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp"}
+    # Magic-byte signatures for allowed image formats
+    MAGIC_BYTES = {
+        b"\xff\xd8\xff": "image/jpeg",
+        b"\x89PNG": "image/png",      # first 4 bytes: 89 50 4E 47
+        b"RIFF": "image/webp",
+    }
+
+    async def upload_image(self, file: UploadFile) -> dict:
+        """
+        Accept a multipart image upload, validate, and persist to disk.
+        Returns the public URL for the uploaded file.
+        """
+        # --- Content-type check ---
+        if file.content_type not in self.ALLOWED_CONTENT_TYPES:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unsupported file type '{file.content_type}'. Allowed: jpeg, png, webp.",
+            )
+
+        # --- Read file bytes (enforce max size) ---
+        data = await file.read()
+        if len(data) > self.MAX_IMAGE_SIZE:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=f"File too large ({len(data)} bytes). Maximum allowed: {self.MAX_IMAGE_SIZE} bytes (5 MB).",
+            )
+
+        # --- Magic-byte validation ---
+        valid_magic = False
+        for magic, _ in self.MAGIC_BYTES.items():
+            if data[:len(magic)] == magic:
+                valid_magic = True
+                break
+        if not valid_magic:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="File does not appear to be a valid image (magic bytes check failed).",
+            )
+
+        # --- Warn on suspiciously small files ---
+        if len(data) < 1024:
+            logger.warning(
+                "upload.small_file",
+                size=len(data),
+                content_type=file.content_type,
+                filename=file.filename,
+            )
+
+        # --- Determine extension and save ---
+        ext_map = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
+        ext = ext_map.get(file.content_type, ".bin")
+        filename = f"{uuid.uuid4().hex}{ext}"
+
+        self.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+        dest = self.UPLOAD_DIR / filename
+        dest.write_bytes(data)
+
+        image_url = f"http://localhost:8000/api/v1/chat/uploads/{filename}"
+        logger.info("upload.success", filename=filename, size=len(data))
+        return {"image_url": image_url}
+
+    async def serve_upload(self, filename: str):
+        """Serve a previously uploaded image file."""
+        filepath = self.UPLOAD_DIR / filename
+        if not filepath.is_file():
+            raise HTTPException(status_code=404, detail="File not found.")
+        # Determine media type from extension
+        media_types = {".jpg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}
+        ext = filepath.suffix.lower()
+        media_type = media_types.get(ext, "application/octet-stream")
+        return FileResponse(str(filepath), media_type=media_type)
 
 
 # Singleton controller instance

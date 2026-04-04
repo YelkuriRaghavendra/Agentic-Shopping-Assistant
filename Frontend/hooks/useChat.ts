@@ -23,7 +23,7 @@ function filterValidProducts(products?: ProductCardDTO[]): ProductCardDTO[] | un
 
 interface UseChatReturn {
   messages: ChatMessageUI[];
-  sendMessage: (text: string) => void;
+  sendMessage: (text: string, imageBase64?: string) => void;
   sendProductMessage: (productId: string, productName: string) => void;
   sendCompareMessage: (products: ProductCardDTO[]) => void;
   addOrderConfirmation: (order: OrderConfirmation) => void;
@@ -131,9 +131,10 @@ export function useChat(
   }, [sessionId, customerId, queryClient]);
 
   const sendMessage = useCallback(
-    async (text: string) => {
+    async (text: string, imageBase64?: string) => {
       const trimmed = text.trim();
-      if (!trimmed || loadingRef.current) return;
+      if (!trimmed && !imageBase64) return;
+      if (loadingRef.current) return;
 
       // Slash command: /start — allowed even when session is ended
       if (trimmed.toLowerCase() === "/start") {
@@ -226,7 +227,8 @@ export function useChat(
       const userMessage: ChatMessageUI = {
         id: generateId(),
         role: "user",
-        content: trimmed,
+        content: trimmed || "Here's my outfit, help me find matching shoes",
+        imageBase64: imageBase64,
         timestamp: new Date(),
       };
 
@@ -236,9 +238,10 @@ export function useChat(
       scrollToBottom();
 
       const body: ChatRequest = {
-        message: trimmed,
+        message: trimmed || "Here's my outfit, help me find matching shoes",
         ...(customerId ? { customer_id: customerId } : {}),
         ...(activeSessionId ? { session_id: activeSessionId } : {}),
+        ...(imageBase64 ? { image_base64: imageBase64 } : {}),
       };
 
       // Create a placeholder bot message for streaming
