@@ -446,10 +446,14 @@ async def _resolve_session(deps: NodeDeps, request: ChatRequest):
 
 async def _load_history(deps: NodeDeps, session) -> ConversationHistory:
     messages = await deps.message_repo.get_recent_turns(session_id=session.session_id, limit=10)
-    turns = [
-        {"role": m.role.value if hasattr(m.role, "value") else m.role, "content": m.content}
-        for m in messages
-    ]
+    turns = []
+    for m in messages:
+        raw_role = m.role.value if hasattr(m.role, "value") else str(m.role)
+        # OpenAI API requires lowercase roles
+        role = raw_role.lower().replace("assistant", "assistant").replace("user", "user")
+        if role not in ("user", "assistant", "system"):
+            role = "assistant"
+        turns.append({"role": role, "content": m.content})
     summary = deps.memory.load_summary(session)
     return ConversationHistory(recent_turns=turns, summary=summary)
 
