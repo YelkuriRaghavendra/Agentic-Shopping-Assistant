@@ -2,6 +2,8 @@
 
 import { cn } from "@/lib/utils";
 import type { SessionResponse } from "@/types/chat.types";
+import { useQueryClient } from "@tanstack/react-query";
+import type { MessageHistoryResponse } from "@/types/chat.types";
 
 export interface SessionSidebarProps {
   sessions: SessionResponse[];
@@ -22,6 +24,32 @@ function formatDate(dateStr: string): string {
   } catch {
     return dateStr;
   }
+}
+
+function useSessionTitle(sessionId: string): string | null {
+  const queryClient = useQueryClient();
+  const data = queryClient.getQueryData<MessageHistoryResponse>(["messages", sessionId]);
+  if (!data?.messages?.length) return null;
+  const sorted = [...data.messages].sort(
+    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+  );
+  const firstUser = sorted.find((m) => m.role.toLowerCase() === "user");
+  if (!firstUser) return null;
+  const text = firstUser.content.replace(/\s+/g, " ").trim();
+  return text.length > 40 ? text.slice(0, 37) + "..." : text;
+}
+
+function SessionTitle({ sessionId }: { sessionId: string }) {
+  const title = useSessionTitle(sessionId);
+  if (!title) return null;
+  return (
+    <span
+      className="text-[10px] truncate block mt-0.5"
+      style={{ color: "rgba(255,255,255,0.35)", fontWeight: 300, maxWidth: "100%" }}
+    >
+      {title}
+    </span>
+  );
 }
 
 export function SessionSidebar({
@@ -106,6 +134,7 @@ export function SessionSidebar({
               >
                 {formatDate(session.started_at)}
               </span>
+              <SessionTitle sessionId={session.session_id} />
               <div className="flex items-center justify-between gap-2">
                 <span
                   className="font-mono text-[9px] uppercase tracking-widest"

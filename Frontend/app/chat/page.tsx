@@ -7,6 +7,7 @@ import { useChat } from "@/hooks/useChat";
 import { ChatWindow } from "@/components/ChatWindow";
 import { SessionSidebar } from "@/components/SessionSidebar";
 import { UserDialog } from "@/components/UserDialog";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { theme } from "@/lib/theme";
 
 export default function ChatPage() {
@@ -16,6 +17,7 @@ export default function ChatPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
+    <ErrorBoundary>
     <main className="flex h-screen w-full overflow-hidden" style={{ background: theme.bg.feed }}>
 
       {/* ── Mobile sidebar overlay ── */}
@@ -109,5 +111,6 @@ export default function ChatPage() {
         error={customer.error}
       />
     </main>
+    </ErrorBoundary>
   );
 }

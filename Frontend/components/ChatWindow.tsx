@@ -12,7 +12,7 @@ import type React from "react";
 
 export interface ChatWindowProps {
   messages: ChatMessageUI[];
-  sendMessage: (text: string) => void;
+  sendMessage: (text: string, imageBase64?: string) => void;
   sendProductMessage: (productId: string, productName: string) => void;
   sendCompareMessage: (products: ProductCardDTO[]) => void;
   isLoading: boolean;
@@ -110,11 +110,58 @@ export function ChatWindow({
       </div>
 
       {/* Messages area */}
-      <div className="flex-1 overflow-y-auto py-4">
+      <div className="flex-1 overflow-y-auto py-4" suppressHydrationWarning>
         {isHistoryLoading ? (
           <HistorySkeleton />
         ) : (
           <AnimatePresence initial={false}>
+            {/* Welcome message when no messages yet */}
+            {messages.length === 0 && !isTyping && (
+              <div className="flex flex-col items-center justify-center h-full gap-4 px-6 py-16">
+                <div
+                  className="flex h-14 w-14 items-center justify-center rounded-full"
+                  style={{ background: "#111116", border: "1px solid rgba(29,158,117,0.3)" }}
+                >
+                  <span className="font-mono text-sm uppercase tracking-wider" style={{ color: "#1D9E75" }}>Vy</span>
+                </div>
+                <h2
+                  className="font-josefin font-bold uppercase tracking-widest text-lg text-center"
+                  style={{ color: "#fff", letterSpacing: "3px" }}
+                >
+                  Welcome to Vik<span style={{ color: "#1D9E75" }}>rai</span>
+                </h2>
+                <p
+                  className="text-[13px] text-center max-w-md leading-relaxed"
+                  style={{ color: "rgba(255,255,255,0.45)", fontWeight: 300 }}
+                >
+                  I can help you find the perfect shoes. Tell me what you&apos;re looking for, or upload a photo of your outfit and I&apos;ll suggest matching shoes.
+                </p>
+                <div className="flex gap-2 mt-2 flex-wrap justify-center">
+                  {[
+                    { label: "Casual sneakers", msg: "I'm looking for casual sneakers" },
+                    { label: "Running shoes", msg: "Show me running shoes" },
+                    { label: "Formal shoes", msg: "I need formal shoes" },
+                  ].map((item) => (
+                    <button
+                      key={item.label}
+                      onClick={() => sendMessage(item.msg)}
+                      className="px-4 py-2 font-mono text-[9px] uppercase tracking-widest transition-all duration-150"
+                      style={{
+                        background: "transparent",
+                        color: "rgba(29,158,117,0.8)",
+                        border: "1px solid rgba(29,158,117,0.25)",
+                        borderRadius: "20px",
+                        letterSpacing: "1.5px",
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(29,158,117,0.1)"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             {messages.map((msg) => (
               <MessageBubble
                 key={msg.id}

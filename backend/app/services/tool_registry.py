@@ -20,6 +20,29 @@ from app.core.logging import get_logger
 logger = get_logger(__name__)
 
 
+def _enrich_query(query: str, args: dict) -> str:
+    """Enrich a search query with slot context to improve semantic search recall."""
+    parts = [query]
+    if args.get("use_case"):
+        parts.append(args["use_case"])
+    if args.get("category"):
+        parts.append(args["category"])
+    if args.get("brand"):
+        parts.append(args["brand"])
+    if args.get("size"):
+        parts.append(f"size {args['size']}")
+    # Deduplicate tokens while preserving order
+    seen: set[str] = set()
+    tokens: list[str] = []
+    for part in parts:
+        for token in part.split():
+            lower = token.lower()
+            if lower not in seen:
+                seen.add(lower)
+                tokens.append(token)
+    return " ".join(tokens)
+
+
 def _deduplicate_chunks(chunks: list[RetrievedChunk], top_k: int = 5) -> list[RetrievedChunk]:
     """Remove duplicate products, keeping the highest-similarity chunk per product_id."""
     seen: set[str] = set()
@@ -80,7 +103,9 @@ TOOL_DEFINITIONS: list[dict] = [
             "name": "outfit_pairing",
             "description": (
                 "Customer owns an item and wants matching recommendations. "
-                "Use when they say 'I have a blue shirt, what pants go with it?'"
+                "Use when they say 'I have a blue shirt, what pants go with it?' "
+                "Also use when the customer uploads a photo of their outfit and wants matching shoes — "
+                "extract the colours, style, and category from the image and use them as parameters."
             ),
             "parameters": {
                 "type": "object",
@@ -313,9 +338,16 @@ class ToolRegistry:
 
     async def _handle_search_products(self, args: dict) -> ToolResult:
         query = args.get("query", "")
-        if args.get("color"):
-            query = f"{args['color']} {query}"
-        filters: dict = {}
+        requested_color = args.get("color", "").strip().lower()
+        if requested_color:
+            query = f"{requested_color} {query}"
+            filters: dict = {"color": requested_color}
+        else:
+            filters: dict = {}
+
+        # Enrich the query with slot context for better semantic search
+        query = _enrich_query(query, args)
+
         if args.get("brand"):
             filters["brand"] = args["brand"]
         if args.get("max_price"):
@@ -324,6 +356,18 @@ class ToolRegistry:
             filters["doc_type"] = "product"
         chunks = await self._rag.retrieve(query=query, filters=filters)
         chunks = _deduplicate_chunks(chunks)
+
+        # Post-filter by color if requested — check product name, content, and metadata
+        if requested_color and chunks:
+            color_matched = [
+                c for c in chunks
+                if requested_color in c.content.lower()
+                or requested_color in c.metadata.get("color", "").lower()
+                or requested_color in c.metadata.get("product_name", "").lower()
+            ]
+            if color_matched:
+                chunks = color_matched
+
         summary = (
             f"Found {len(chunks)} products for: {query}"
             if chunks
@@ -398,7 +442,12 @@ class ToolRegistry:
         )
         chunks_a = _deduplicate_chunks(chunks_a, top_k=2)
         chunks_b = _deduplicate_chunks(chunks_b, top_k=2)
-        all_chunks = chunks_a[:2] + chunks_b[:2]
+        # Take the best match for each product, ensuring they're different
+        best_a = chunks_a[0] if chunks_a else None
+        # For B, skip any product that matches A's product_id
+        a_ids = {c.product_id for c in chunks_a[:1]} if best_a else set()
+        best_b = next((c for c in chunks_b if c.product_id not in a_ids), chunks_b[0] if chunks_b else None)
+        all_chunks = [c for c in [best_a, best_b] if c is not None]
         summary = (
             f"Comparing {a} vs {b}."
             if all_chunks

@@ -51,7 +51,12 @@ export function useSessions(customerId: string | null): UseSessionsReturn {
         ["sessions", customerId],
         (prev) => [newSession, ...(prev ?? [])]
       );
+      // Set active session and sync the URL so useChat picks up the new session
+      // immediately instead of racing with the polling interval
       setActiveSessionId(newSession.session_id);
+      const url = new URL(window.location.href);
+      url.searchParams.set("session", newSession.session_id);
+      window.history.replaceState({}, "", url.toString());
     },
     [customerId, queryClient]
   );

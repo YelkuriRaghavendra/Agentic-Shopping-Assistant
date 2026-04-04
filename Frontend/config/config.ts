@@ -17,6 +17,7 @@ export const endpoints = {
   getSession:       (id: string) => `${apiBaseUrl}${API_PREFIX}/chat/sessions/${id}`,
   endSession:       (id: string) => `${apiBaseUrl}${API_PREFIX}/chat/sessions/${id}/end`,
   sessionMessages:  (id: string) => `${apiBaseUrl}${API_PREFIX}/chat/sessions/${id}/messages`,
+  uploadImage:      `${apiBaseUrl}${API_PREFIX}/chat/upload-image`,
   messageFeedback:  (id: string) => `${apiBaseUrl}${API_PREFIX}/chat/messages/${id}/feedback`,
   orderDetail:      (id: string) => `${commerceBaseUrl}/commerce/orders/${id}`,
 } as const;

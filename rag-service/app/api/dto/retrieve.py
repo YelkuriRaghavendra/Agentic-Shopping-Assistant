@@ -10,6 +10,7 @@ class RetrievalFilters(BaseModel):
     document_type: str | None = None
     min_price:    float | None = Field(default=None, ge=0)
     max_price:    float | None = Field(default=None, ge=0)
+    color:        str | None = None
     # Required when document_type = ORDER (Requirement 12.2, 12.4)
     customer_id:  str | None = None
 
@@ -19,6 +20,8 @@ class RetrievalFilters(BaseModel):
             filters["brand"] = self.brand
         if self.category:
             filters["category"] = self.category
+        if self.color:
+            filters["color"] = self.color
         if self.customer_id:
             filters["customer_id"] = self.customer_id
         return filters
