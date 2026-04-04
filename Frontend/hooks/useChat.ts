@@ -50,14 +50,26 @@ export function useChat(
   const [isTyping, setIsTyping] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(sessionId);
+  const activeSessionIdRef = useRef<string | null>(sessionId);
   const [sessionEnded, setSessionEnded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [nodeStatus, setNodeStatus] = useState("");
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const loadingRef = useRef(false);
 
+  // Keep activeSessionId in sync with the sessionId prop from useSessions.
+  // This fixes the race where clicking "New Session" updates useSessions state
+  // but useChat still holds the old session ID.
+  useEffect(() => {
+    if (sessionId !== null && sessionId !== activeSessionIdRef.current) {
+      setActiveSessionId(sessionId);
+      activeSessionIdRef.current = sessionId;
+    }
+  }, [sessionId]);
+
   /** Update active session and refresh sidebar when a new session is created */
   const syncSession = useCallback((newSessionId: string) => {
+    activeSessionIdRef.current = newSessionId;
     setActiveSessionId((prev) => {
       if (prev !== newSessionId) {
         // New session detected — refresh sidebar list and sync URL
@@ -116,6 +128,7 @@ export function useChat(
       });
     setMessages(loaded);
     setActiveSessionId(sessionId);
+    activeSessionIdRef.current = sessionId;
     setSessionEnded(false);
     scrollToBottom();
   }, [historyData, sessionId, scrollToBottom]);
@@ -174,7 +187,7 @@ export function useChat(
 
       // Slash command: /end (requires confirmation)
       if (trimmed.toLowerCase() === "/end") {
-        if (!activeSessionId || sessionEnded || loadingRef.current) return;
+        if (!activeSessionIdRef.current || sessionEnded || loadingRef.current) return;
 
         // Check if last message was the confirmation prompt
         const lastMsg = messages[messages.length - 1];
@@ -197,7 +210,7 @@ export function useChat(
         setLoading(true);
         setError(null);
         try {
-          await httpClient.post(endpoints.endSession(activeSessionId), {});
+          await httpClient.post(endpoints.endSession(activeSessionIdRef.current!), {});
           setSessionEnded(true);
           queryClient.invalidateQueries({ queryKey: ["sessions"] });
           localStorage.setItem("session_updated", Date.now().toString());
@@ -239,10 +252,11 @@ export function useChat(
       setError(null);
       scrollToBottom();
 
+      const currentSessionId = activeSessionIdRef.current;
       const body: ChatRequest = {
         message: trimmed || "Here's my outfit, help me find matching shoes",
         ...(customerId ? { customer_id: customerId } : {}),
-        ...(activeSessionId ? { session_id: activeSessionId } : {}),
+        ...(currentSessionId ? { session_id: currentSessionId } : {}),
         ...(imageBase64 ? { image_base64: imageBase64 } : {}),
       };
 
@@ -408,7 +422,7 @@ export function useChat(
         setNodeStatus("");
       }
     },
-    [sessionEnded, customerId, activeSessionId, scrollToBottom, setLoading, syncSession]
+    [sessionEnded, customerId, scrollToBottom, setLoading, syncSession]
   );
 
   // Shared streaming helper for product/compare messages
@@ -431,10 +445,11 @@ export function useChat(
       const botId = generateId();
       setMessages((prev) => [...prev, { id: botId, role: "bot", content: "", timestamp: new Date() }]);
 
+      const currentSessionId = activeSessionIdRef.current;
       const body: ChatRequest = {
         message: apiMessage,
         ...(customerId ? { customer_id: customerId } : {}),
-        ...(activeSessionId ? { session_id: activeSessionId } : {}),
+        ...(currentSessionId ? { session_id: currentSessionId } : {}),
       };
 
       setIsTyping(true);
@@ -559,7 +574,7 @@ export function useChat(
         setNodeStatus("");
       }
     },
-    [sessionEnded, customerId, activeSessionId, scrollToBottom, setLoading, syncSession]
+    [sessionEnded, customerId, scrollToBottom, setLoading, syncSession]
   );
 
   const sendProductMessage = useCallback(

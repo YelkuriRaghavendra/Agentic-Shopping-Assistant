@@ -9,7 +9,7 @@ Grouped by pipeline phase for clarity.
 
 from __future__ import annotations
 
-from typing import Any, TypedDict
+from typing import TypedDict
 
 from app.api.dto.chat_dto import ChatRequest, ChatResponse, ProductCardDTO
 from app.clients.llm_client import ToolCall, LLMResult
@@ -25,9 +25,12 @@ class AgentState(TypedDict, total=False):
     t_start: float
 
     # ── Context (load_context node) ──────────────────────────────────
-    session: Any
+    # NOTE: The ORM Session object is NOT stored in state (not serializable).
+    # It is stashed on ``NodeDeps._session`` for nodes that need it.
     session_id: str
     customer_id: str | None
+    session_context: dict          # session.context (JSON-safe)
+    message_count: int             # session.message_count
     customer_profile: dict
     conversation: ConversationHistory
     slots: SlotState

@@ -89,11 +89,15 @@ async def load_context(state: AgentState, deps: NodeDeps) -> dict:
 
     people = deps.memory.extract_people_from_message(request.message)
 
+    # Stash the ORM session on deps (not serialized by the checkpointer)
+    deps._session = session
+
     logger.info("node.load_context", session_id=str(session.session_id))
     return {
-        "session": session,
         "session_id": str(session.session_id),
         "customer_id": str(session.customer_id) if session.customer_id else None,
+        "session_context": session.context or {},
+        "message_count": session.message_count,
         "customer_profile": customer_profile,
         "conversation": conversation,
         "slots": slots,
@@ -152,8 +156,8 @@ async def activate_skills(state: AgentState, deps: NodeDeps) -> dict:
         intent=state["intent"],
         slots=state["slots"],
         customer_profile=state["customer_profile"],
-        session_context=state["session"].context or {},
-        turn_count=state["session"].message_count,
+        session_context=state.get("session_context") or {},
+        turn_count=state.get("message_count", 0),
     )
     result = deps.skills.resolve(ctx)
     active = result.metadata.get("active_skills", [])
@@ -354,7 +358,7 @@ async def process_output(state: AgentState, deps: NodeDeps) -> dict:
 async def persist(state: AgentState, deps: NodeDeps) -> dict:
     """Save messages to DB, update session memory, build ChatResponse."""
     request = state["request"]
-    session = state["session"]
+    session = deps._session  # ORM object stashed during load_context
     llm_result = state.get("llm_result")
     t_start = state["t_start"]
     intent = state.get("intent", "unknown")
