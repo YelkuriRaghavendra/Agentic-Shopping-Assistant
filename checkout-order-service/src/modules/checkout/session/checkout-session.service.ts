@@ -245,9 +245,7 @@ export class CheckoutSessionService {
       metadata: { checkout_session_id: sessionId },
       after_completion: {
         type: 'redirect',
-        redirect: {
-          url: `${process.env.FRONTEND_URL ?? 'http://localhost:4001'}/chat?payment=success&session=${sessionId}`,
-        },
+        redirect: { url: `${process.env.FRONTEND_URL ?? 'http://localhost:4001'}/chat` },
       },
     });
 
