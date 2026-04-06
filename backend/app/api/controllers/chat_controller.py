@@ -23,6 +23,7 @@ from app.api.dto.chat_dto import (
     CustomerCreateRequest, CustomerResponse,
     SessionResponse, SessionCreateRequest,
     MessageHistoryResponse, MessageResponse,
+    CreateMessageRequest,
     FeedbackRequest, FeedbackResponse,
 )
 from app.core.exceptions import (
@@ -189,6 +190,30 @@ class ChatController:
             next_cursor=next_cursor,
             has_more=next_cursor is not None,
         )
+
+    async def create_message(
+        self,
+        request: CreateMessageRequest,
+        db: AsyncSession = Depends(get_db),
+    ) -> MessageResponse:
+        """
+        Persist a system/order message directly (no LLM call).
+        Used by the frontend to save order confirmation messages.
+        """
+        from app.db.models.enums.message_enums import MessageRole, GuardrailStatus
+
+        role = MessageRole.ASSISTANT if request.role.lower() == "assistant" else MessageRole.SYSTEM
+        repo = MessageRepository(db)
+        msg = await repo.create(
+            session_id=request.session_id,
+            role=role,
+            content=request.content,
+            intent=request.intent,
+            guardrail_status=GuardrailStatus.PASSED,
+            cited_products=request.cited_products,
+        )
+        await db.commit()
+        return MessageResponse.model_validate(msg)
 
     async def create_session(
         self,

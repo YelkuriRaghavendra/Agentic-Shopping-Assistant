@@ -220,6 +220,9 @@ export function CheckoutModal({
         return;
       }
       const { url } = await res.json();
+      // Save chat session so Stripe redirect tab can restore it
+      const chatSession = new URLSearchParams(window.location.search).get("session");
+      if (chatSession) localStorage.setItem("pending_payment_chat_session", chatSession);
       window.open(url, "_blank");
       setStep("awaiting");
     } catch {

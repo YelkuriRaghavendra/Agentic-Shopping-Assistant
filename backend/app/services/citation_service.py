@@ -20,8 +20,8 @@ logger = get_logger(__name__)
 _CITATION_RE    = re.compile(r'\[P(\d+)\]')
 _PLACEHOLDER_RE = re.compile(r'CITE_P(\d+)_CITE')
 
-# nl2br converts single newlines to <br>, matching chat UI expectations
-_md = md_lib.Markdown(extensions=["nl2br"])
+# nl2br converts single newlines to <br>, tables renders markdown |col|col| tables
+_md = md_lib.Markdown(extensions=["nl2br", "tables"])
 
 
 def _to_placeholder(match: re.Match) -> str:

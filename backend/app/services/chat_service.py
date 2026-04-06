@@ -446,6 +446,11 @@ class ChatService:
         )
         await self._db.commit()
 
+        # ── Generate title after 2nd user message ─────────────────────────
+        if session.message_count == 4 and not session.title:
+            logger.info(f"Triggering title generation for session {session.session_id}, message_count={session.message_count}")
+            asyncio.create_task(self._generate_session_title(session.session_id))
+
         # ── 16. Background tasks ──────────────────────────────────────────
         self._schedule_background_tasks(
             session_id=session.session_id,
@@ -646,6 +651,11 @@ class ChatService:
             session=session, slots=slots, cited_products=cited_products, intent=intent,
         )
         await self._db.commit()
+
+        # ── Generate title after 2nd user message ─────────────────────────
+        if session.message_count == 4 and not session.title:
+            logger.info(f"Triggering title generation for session {session.session_id}, message_count={session.message_count}")
+            asyncio.create_task(self._generate_session_title(session.session_id))
 
         self._schedule_background_tasks(
             session_id=session.session_id, customer_id=session.customer_id,
@@ -1120,18 +1130,10 @@ class ChatService:
         else:
             if not has_type:
                 lines.append("→ Not enough info yet. Ask what TYPE of shoes they want.")
-            elif not has_size and not has_budget:
-                lines.append("→ Ask about their SIZE and BUDGET range. Ask ONLY these two in one short question. Do NOT ask about brand or color yet. Do NOT search yet.")
-            elif not has_brand and not has_color:
-                lines.append("→ Ask about their BRAND preference and COLOR choice. Ask ONLY these two in one short question. Do NOT search yet.")
-            elif not has_brand:
-                lines.append("→ Ask about their BRAND preference only. Do NOT search yet.")
-            elif not has_color:
-                lines.append("→ Ask about their preferred COLOR only. Do NOT search yet.")
-            elif not has_size:
-                lines.append("→ Ask about their SIZE only. Do NOT search yet.")
-            elif not has_budget:
-                lines.append("→ Ask about their BUDGET range only. Do NOT search yet.")
+            elif not has_size or not has_budget:
+                lines.append("→ MANDATORY: Ask about SIZE and BUDGET only. Be creative — vary your wording each time, keep it warm and casual. Do NOT mention brand or color yet. Do NOT search yet.")
+            elif not has_brand or not has_color:
+                lines.append("→ MANDATORY: Ask about BRAND and COLOR only. Be creative — vary your wording each time, keep it warm and casual. Do NOT mention size or budget. Do NOT search yet.")
 
         return "\n".join(lines)
 
@@ -1832,6 +1834,60 @@ class ChatService:
             intent="error", guardrail_status=GuardrailStatus.PASSED, blocked=False,
             latency_ms=int((time.monotonic() - t_start) * 1000), tokens_used=0,
         )
+
+    async def _generate_session_title(self, session_id: uuid.UUID) -> None:
+        """
+        Generate a short title for the session using LLM.
+        Called in background after 2nd user message.
+        """
+        from app.db.session import AsyncSessionLocal
+        try:
+            async with AsyncSessionLocal() as db:
+                session_repo = SessionRepository(db)
+                message_repo = MessageRepository(db)
+                
+                # Get first 2 user messages
+                messages = await message_repo.get_recent_turns(session_id, limit=4)
+                if not messages:
+                    return
+                
+                # Build conversation context
+                conversation = "\n".join([
+                    f"{'User' if m.role == MessageRole.USER else 'Assistant'}: {m.content}"
+                    for m in messages[:4]
+                ])
+                
+                # Ask LLM for a short title
+                prompt = f"""Based on this conversation, generate a short 3-5 word title that summarizes what the user is looking for.
+
+Conversation:
+{conversation}
+
+Return ONLY the title, nothing else. Examples:
+- "Casual sneakers for summer"
+- "Running shoes comparison"
+- "Formal shoes under $100"
+- "Nike Air Max review"
+
+Title:"""
+                
+                try:
+                    title_response = await self._llm.generate(
+                        system_prompt="You are a helpful assistant that creates short, descriptive titles.",
+                        user_message=prompt,
+                        temperature=0.3,
+                        max_tokens=20,
+                    )
+                    title = title_response.content.strip().strip('"').strip("'")
+                    
+                    # Update session with title
+                    await session_repo.update_title(session_id, title)
+                    await db.commit()
+                    logger.info(f"Generated title for session {session_id}: {title}")
+                except Exception as e:
+                    logger.warning(f"Failed to generate title for session {session_id}: {e}")
+        except Exception as e:
+            logger.error(f"Error in _generate_session_title: {e}")
 
 
 # ─────────────────────────────────────────────────────────────────────────────

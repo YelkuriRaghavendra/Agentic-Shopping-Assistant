@@ -82,6 +82,7 @@ export interface SessionResponse {
   customer_id: string | null;
   channel: string;
   status: "active" | "ended";
+  title?: string | null;
   message_count: number;
   total_tokens: number;
   started_at: string;

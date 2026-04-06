@@ -17,37 +17,76 @@ export interface SessionSidebarProps {
 
 function formatDate(dateStr: string): string {
   try {
-    return new Date(dateStr).toLocaleString(undefined, {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+    
+    // Less than 1 hour: "5m ago"
+    if (diffMins < 60) {
+      return diffMins < 1 ? "now" : `${diffMins}m`;
+    }
+    // Less than 24 hours: "3h ago"
+    if (diffHours < 24) {
+      return `${diffHours}h`;
+    }
+    // Less than 7 days: "2d ago"
+    if (diffDays < 7) {
+      return `${diffDays}d`;
+    }
+    // Older: "Jan 5"
+    return date.toLocaleString(undefined, {
       month: "short",
       day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
     });
   } catch {
     return dateStr;
   }
 }
 
-function useSessionTitle(sessionId: string): string | null {
+function generateSmartTitle(message: string): string {
+  // Remove common prefixes
+  let text = message
+    .replace(/^(I'm looking for|I need|Show me|I want|Can you help me find|Looking for|Find me|Search for)/i, "")
+    .trim();
+  
+  // Capitalize first letter
+  text = text.charAt(0).toUpperCase() + text.slice(1);
+  
+  // Truncate smartly at word boundaries
+  if (text.length > 35) {
+    const truncated = text.slice(0, 35);
+    const lastSpace = truncated.lastIndexOf(" ");
+    text = (lastSpace > 20 ? truncated.slice(0, lastSpace) : truncated) + "...";
+  }
+  
+  return text || "New Conversation";
+}
+
+function useSessionTitle(sessionId: string, serverTitle?: string): string {
+  // Prefer server-generated title if available
+  if (serverTitle) return serverTitle;
+  
+  // Fallback to client-generated title from first message
   const queryClient = useQueryClient();
   const data = queryClient.getQueryData<MessageHistoryResponse>(["messages", sessionId]);
-  if (!data?.messages?.length) return null;
+  if (!data?.messages?.length) return "New Conversation";
   const sorted = [...data.messages].sort(
     (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
   );
   const firstUser = sorted.find((m) => m.role.toLowerCase() === "user");
-  if (!firstUser) return null;
-  const text = firstUser.content.replace(/\s+/g, " ").trim();
-  return text.length > 40 ? text.slice(0, 37) + "..." : text;
+  if (!firstUser) return "New Conversation";
+  return generateSmartTitle(firstUser.content);
 }
 
-function SessionTitle({ sessionId }: { sessionId: string }) {
-  const title = useSessionTitle(sessionId);
-  if (!title) return null;
+function SessionTitle({ sessionId, serverTitle }: { sessionId: string; serverTitle?: string }) {
+  const title = useSessionTitle(sessionId, serverTitle);
   return (
     <span
-      className="text-[10px] truncate block mt-0.5"
-      style={{ color: "rgba(255,255,255,0.55)", fontWeight: 300, maxWidth: "100%" }}
+      className="text-[11px] truncate block mt-0.5 font-medium"
+      style={{ color: "rgba(255,255,255,0.85)", fontWeight: 400, maxWidth: "100%" }}
     >
       {title}
     </span>
@@ -127,39 +166,68 @@ export function SessionSidebar({
               key={session.session_id}
               onClick={() => onSelectSession(session.session_id)}
               data-testid="session-entry"
-              className="flex w-full flex-col gap-1 px-3 py-2.5 text-left transition-all duration-150"
+              className="group flex w-full flex-col gap-1.5 px-3 py-3 text-left transition-all duration-200 rounded-lg relative"
               style={{
-                background: isActive ? "rgba(29,158,117,0.12)" : "transparent",
-                borderRadius: "4px",
-                borderLeft: isActive ? "2px solid #1D9E75" : "2px solid transparent",
+                background: isActive ? "rgba(29,158,117,0.08)" : "transparent",
+                border: isActive ? "1px solid rgba(29,158,117,0.2)" : "1px solid transparent",
+              }}
+              onMouseEnter={(e) => {
+                if (!isActive) {
+                  (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.03)";
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!isActive) {
+                  (e.currentTarget as HTMLButtonElement).style.background = "transparent";
+                }
               }}
             >
-              <span
-                className="font-mono text-[9px] uppercase tracking-wider truncate"
-                style={{ color: isActive ? "#5DCAA5" : "rgba(255,255,255,0.6)", letterSpacing: "1px" }}
-              >
-                {formatDate(session.started_at)}
-              </span>
-              <SessionTitle sessionId={session.session_id} />
-              <div className="flex items-center justify-between gap-2">
-                <span
-                  className="font-mono text-[9px] uppercase tracking-widest"
-                  style={{
-                    color: isLive ? "#1D9E75" : "rgba(255,255,255,0.25)",
-                    letterSpacing: "1.5px",
-                  }}
-                >
-                  {isLive ? "● Active" : "○ Ended"}
-                </span>
-                {session.message_count > 0 && (
+              {/* Title - most prominent */}
+              <SessionTitle sessionId={session.session_id} serverTitle={session.title} />
+              
+              {/* Bottom row: status + metadata */}
+              <div className="flex items-center justify-between gap-2 mt-0.5">
+                <div className="flex items-center gap-2">
+                  {/* Status indicator */}
                   <span
-                    className="font-mono text-[9px]"
-                    style={{ color: "rgba(255,255,255,0.4)" }}
+                    className="flex items-center gap-1 font-mono text-[8px] uppercase tracking-wider px-1.5 py-0.5 rounded"
+                    style={{
+                      color: isLive ? "#1D9E75" : "rgba(255,255,255,0.3)",
+                      background: isLive ? "rgba(29,158,117,0.1)" : "transparent",
+                      letterSpacing: "1px",
+                    }}
                   >
-                    {session.message_count} msg
+                    <span style={{ fontSize: "6px" }}>{isLive ? "●" : "○"}</span>
+                    {isLive ? "Active" : "Ended"}
                   </span>
-                )}
+                  
+                  {/* Message count */}
+                  {session.message_count > 0 && (
+                    <span
+                      className="font-mono text-[9px]"
+                      style={{ color: "rgba(255,255,255,0.35)" }}
+                    >
+                      {session.message_count} msg
+                    </span>
+                  )}
+                </div>
+                
+                {/* Date - right aligned */}
+                <span
+                  className="font-mono text-[8px] uppercase tracking-wider"
+                  style={{ color: "rgba(255,255,255,0.3)", letterSpacing: "0.5px" }}
+                >
+                  {formatDate(session.started_at)}
+                </span>
               </div>
+              
+              {/* Active indicator bar */}
+              {isActive && (
+                <div
+                  className="absolute left-0 top-2 bottom-2 w-0.5 rounded-r"
+                  style={{ background: "#1D9E75" }}
+                />
+              )}
             </button>
           );
         })
