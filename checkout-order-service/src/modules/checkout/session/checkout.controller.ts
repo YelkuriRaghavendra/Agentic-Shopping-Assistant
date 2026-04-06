@@ -31,7 +31,7 @@ function centsToDisplay(cents: number): string {
   return (cents / 100).toFixed(2);
 }
 
-@Controller('commerce/checkout/sessions')
+@Controller('commerce/checkout-sessions')
 @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
 export class CheckoutController {
   constructor(private readonly checkoutSessionService: CheckoutSessionService) {}

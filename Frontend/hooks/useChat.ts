@@ -12,12 +12,14 @@ import type {
   ProductCardDTO,
   SessionResponse,
   OrderConfirmation,
+  CartData,
+  OrderHistoryData,
 } from "@/types/chat.types";
 
-/** Filter out products with missing or zero price */
+/** Filter out products with missing image or product ID */
 function filterValidProducts(products?: ProductCardDTO[]): ProductCardDTO[] | undefined {
   if (!products || products.length === 0) return products;
-  const filtered = products.filter((p) => p.price != null && p.price > 0);
+  const filtered = products.filter((p) => p.productId != null && p.productId !== "");
   return filtered.length > 0 ? filtered : undefined;
 }
 
@@ -295,7 +297,6 @@ export function useChat(
                   if (event.type === "done") {
                     const hasHtml = /<\/?(?:table|tr|td|th|ul|ol|li)\b/i.test(streamedContent);
                     if (event.session_id) syncSession(event.session_id);
-                    if (event.checkout_data) console.log("[useChat] checkout_data from buffer:", event.checkout_data);
                     setMessages((prev) =>
                       prev.map((m) =>
                         m.id === botId
@@ -308,6 +309,8 @@ export function useChat(
                               suggestions: event.suggestions,
                               continueUrl: event.continue_url || undefined,
                               checkoutData: event.checkout_data || undefined,
+                              cartData: (event.cart_data as CartData) || undefined,
+                              orderHistoryData: (event.order_history_data as OrderHistoryData) || undefined,
                               streamDone: true,
                             }
                           : m
@@ -347,13 +350,6 @@ export function useChat(
                 if (event.session_id) {
                   syncSession(event.session_id);
                 }
-                // Debug checkout data
-                if (event.checkout_data) {
-                  console.log("[useChat] checkout_data received:", event.checkout_data);
-                }
-                if (event.continue_url) {
-                  console.log("[useChat] continue_url received:", event.continue_url);
-                }
                 setMessages((prev) =>
                   prev.map((m) =>
                     m.id === botId
@@ -366,6 +362,8 @@ export function useChat(
                           suggestions: event.suggestions,
                           continueUrl: event.continue_url || undefined,
                           checkoutData: event.checkout_data || undefined,
+                          cartData: (event.cart_data as CartData) || undefined,
+                          orderHistoryData: (event.order_history_data as OrderHistoryData) || undefined,
                           streamDone: true,
                         }
                       : m
@@ -483,6 +481,8 @@ export function useChat(
                               citedProducts: filterValidProducts(event.cited_products), suggestions: event.suggestions,
                               continueUrl: event.continue_url || undefined,
                               checkoutData: event.checkout_data || undefined,
+                              cartData: (event.cart_data as CartData) || undefined,
+                              orderHistoryData: (event.order_history_data as OrderHistoryData) || undefined,
                               streamDone: true,
                             }
                           : m
@@ -523,6 +523,8 @@ export function useChat(
                           suggestions: event.suggestions,
                           continueUrl: event.continue_url || undefined,
                           checkoutData: event.checkout_data || undefined,
+                          cartData: (event.cart_data as CartData) || undefined,
+                          orderHistoryData: (event.order_history_data as OrderHistoryData) || undefined,
                           streamDone: true,
                         }
                       : m

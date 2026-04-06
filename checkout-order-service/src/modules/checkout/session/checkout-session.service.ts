@@ -94,8 +94,8 @@ export class CheckoutSessionService {
 
     // In local dev, set continue_url using the real sessionId from DB
     if (skipUcp) {
-      const platformBase = process.env.PLATFORM_BASE_URL ?? 'http://localhost:3001';
-      session.continueUrl = `${platformBase}/commerce/checkout-sessions/${session.sessionId}/summary`;
+      const frontendBase = process.env.FRONTEND_URL ?? 'http://localhost:4001';
+      session.continueUrl = `${frontendBase}/chat`;
       await this.sessionRepo.save(session);
     } else {
       await this.reactToStatus(session, UcpCheckoutStatus.INCOMPLETE, ucpStatus, null);
@@ -238,7 +238,7 @@ export class CheckoutSessionService {
       metadata: { checkout_session_id: sessionId },
       after_completion: {
         type: 'redirect',
-        redirect: { url: `${process.env.PLATFORM_BASE_URL ?? 'http://localhost:3001'}/commerce/checkout/sessions/${sessionId}/summary` },
+        redirect: { url: `${process.env.FRONTEND_URL ?? 'http://localhost:4001'}/chat` },
       },
     });
 

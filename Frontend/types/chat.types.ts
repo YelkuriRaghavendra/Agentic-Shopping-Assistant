@@ -129,6 +129,26 @@ export interface CheckoutData {
   saved_addresses?: SavedAddress[];
 }
 
+export interface CartData {
+  line_items: CheckoutLineItem[];
+  totals: { subtotal_cents: number; tax_cents: number; grand_total_cents: number };
+  checkout_session_id: string;
+  saved_addresses?: SavedAddress[];
+}
+
+export interface OrderSummary {
+  order_id: string;
+  ucp_order_id?: string;
+  status: string;
+  totals: { grand_total_cents: number };
+  created_at: string;
+}
+
+export interface OrderHistoryData {
+  orders: OrderSummary[];
+  next_cursor: string | null;
+}
+
 export interface OrderConfirmation {
   order_id: string;
   line_items: CheckoutLineItem[];
@@ -149,4 +169,6 @@ export interface ChatMessageUI {
   continueUrl?: string;
   checkoutData?: CheckoutData;
   orderConfirmation?: OrderConfirmation;
+  cartData?: CartData;
+  orderHistoryData?: OrderHistoryData;
 }

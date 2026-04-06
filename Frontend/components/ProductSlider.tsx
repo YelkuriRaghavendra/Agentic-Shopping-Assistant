@@ -134,7 +134,7 @@ export const ProductSlider = memo(function ProductSlider({ products, onSelectPro
                 </p>
 
                 <p style={{ color: theme.teal[600], fontFamily: theme.font.mono, fontSize: 11, letterSpacing: "0.5px" }}>
-                  {product.price != null ? `₹${product.price}` : "N/A"}
+                  {product.price != null && product.price > 0 ? `₹${product.price}` : "Price on request"}
                 </p>
 
                 <StarRating rating={product.rating} />
