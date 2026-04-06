@@ -70,6 +70,12 @@ router.get(
     description="Cursor-paginated. Pass next_cursor as before_id for the next page.",
 )(chat_controller.get_history)
 
+router.post(
+    "/messages",
+    summary="Create a message directly",
+    description="Persist a system/order message without triggering LLM. Used for order confirmations.",
+)(chat_controller.create_message)
+
 # ── Customer management ───────────────────────────────────────────────────────
 router.post(
     "/customers",

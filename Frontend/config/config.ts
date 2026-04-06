@@ -18,6 +18,7 @@ export const endpoints = {
   endSession:       (id: string) => `${apiBaseUrl}${API_PREFIX}/chat/sessions/${id}/end`,
   sessionMessages:  (id: string) => `${apiBaseUrl}${API_PREFIX}/chat/sessions/${id}/messages`,
   uploadImage:      `${apiBaseUrl}${API_PREFIX}/chat/upload-image`,
+  createMessage:    `${apiBaseUrl}${API_PREFIX}/chat/messages`,
   messageFeedback:  (id: string) => `${apiBaseUrl}${API_PREFIX}/chat/messages/${id}/feedback`,
   orderDetail:      (id: string) => `${commerceBaseUrl}/commerce/orders/${id}`,
   activeCart:       (customerId: string) => `${commerceBaseUrl}/commerce/checkout-sessions?customerId=${customerId}`,

@@ -25,6 +25,7 @@ class Session(Base):
     )
     # Layer 2 memory: slots, shown_products, summary, last_intent, known_people
     context:       Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    title:         Mapped[str | None] = mapped_column(String(100), nullable=True)
     message_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     total_tokens:  Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     started_at:    Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)

@@ -47,6 +47,8 @@ export const ProductSlider = memo(function ProductSlider({ products, onSelectPro
       setSending(true);
       onSelectProduct(product.productId, product.productName);
       setSelectedIds(new Set());
+      // Reset sending state after a short delay to allow re-selection
+      setTimeout(() => setSending(false), 500);
     }
   }
 
@@ -56,6 +58,8 @@ export const ProductSlider = memo(function ProductSlider({ products, onSelectPro
     const selected = products.filter((p) => selectedIds.has(p.productId));
     onCompareProducts(selected);
     setSelectedIds(new Set());
+    // Reset sending state after a short delay to allow re-selection
+    setTimeout(() => setSending(false), 500);
   }
 
   return (

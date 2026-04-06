@@ -143,15 +143,18 @@ TOOL_DEFINITIONS: list[dict] = [
         "type": "function",
         "function": {
             "name": "compare_products",
-            "description": "Compare two products side by side. Use for 'Nike vs Adidas' or 'which is better'.",
+            "description": "Compare two or more products side by side. Use for 'Nike vs Adidas' or 'which is better' or 'compare these 3 shoes'.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "product_a": {"type": "string"},
-                    "product_b": {"type": "string"},
-                    "aspects":   {"type": "string"},
+                    "product_names": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "List of product names to compare (2 or more)"
+                    },
+                    "aspects": {"type": "string"},
                 },
-                "required": ["product_a", "product_b"],
+                "required": ["product_names"],
             },
         },
     },
@@ -434,30 +437,56 @@ class ToolRegistry:
         )
 
     async def _handle_compare_products(self, args: dict) -> ToolResult:
-        a = args.get("product_a", "")
-        b = args.get("product_b", "")
-        chunks_a, chunks_b = await asyncio.gather(
-            self._rag.retrieve(query=a, filters={"doc_type": "product"}),
-            self._rag.retrieve(query=b, filters={"doc_type": "product"}),
-        )
-        chunks_a = _deduplicate_chunks(chunks_a, top_k=2)
-        chunks_b = _deduplicate_chunks(chunks_b, top_k=2)
-        # Take the best match for each product, ensuring they're different
-        best_a = chunks_a[0] if chunks_a else None
-        # For B, skip any product that matches A's product_id
-        a_ids = {c.product_id for c in chunks_a[:1]} if best_a else set()
-        best_b = next((c for c in chunks_b if c.product_id not in a_ids), chunks_b[0] if chunks_b else None)
-        all_chunks = [c for c in [best_a, best_b] if c is not None]
+        # Support both old format (product_a, product_b) and new format (product_names array)
+        product_names = args.get("product_names", [])
+        if not product_names:
+            # Fallback to old format for backward compatibility
+            a = args.get("product_a", "")
+            b = args.get("product_b", "")
+            if a and b:
+                product_names = [a, b]
+        
+        if len(product_names) < 2:
+            return ToolResult(
+                tool_name="compare_products",
+                success=False,
+                data={},
+                retrieved_chunks=[],
+                summary="Need at least 2 products to compare.",
+            )
+        
+        # Retrieve chunks for all products in parallel
+        retrieve_tasks = [
+            self._rag.retrieve(query=name, filters={"doc_type": "product"})
+            for name in product_names
+        ]
+        all_results = await asyncio.gather(*retrieve_tasks)
+        
+        # Take the best match for each product, ensuring they're all different
+        seen_ids: set[str] = set()
+        final_chunks: list[RetrievedChunk] = []
+        
+        for chunks in all_results:
+            deduped = _deduplicate_chunks(chunks, top_k=2)
+            # Find the first chunk that hasn't been used yet
+            for chunk in deduped:
+                if chunk.product_id not in seen_ids:
+                    final_chunks.append(chunk)
+                    seen_ids.add(chunk.product_id)
+                    break
+        
+        product_list = " vs ".join(product_names)
         summary = (
-            f"Comparing {a} vs {b}."
-            if all_chunks
-            else f"No products found for comparison of {a} vs {b}. Tell the customer honestly that neither product was found."
+            f"Comparing {product_list}. Found {len(final_chunks)} products."
+            if final_chunks
+            else f"No products found for comparison of {product_list}. Tell the customer honestly that products were not found."
         )
+        
         return ToolResult(
             tool_name="compare_products",
             success=True,
-            data={"product_a": a, "product_b": b},
-            retrieved_chunks=all_chunks,
+            data={"products": product_names, "found_count": len(final_chunks)},
+            retrieved_chunks=final_chunks,
             summary=summary,
         )
 

@@ -61,15 +61,16 @@ export function useSessions(customerId: string | null): UseSessionsReturn {
     [customerId, queryClient]
   );
 
-  // Listen for same-tab URL changes (e.g. from useChat syncing session_id)
+  // Listen for session changes from useChat via custom event (replaces polling)
   useEffect(() => {
-    const interval = setInterval(() => {
+    const handler = () => {
       const urlSession = getSessionFromUrl();
       if (urlSession && urlSession !== activeSessionId) {
         setActiveSessionId(urlSession);
       }
-    }, 500);
-    return () => clearInterval(interval);
+    };
+    window.addEventListener("session-updated", handler);
+    return () => window.removeEventListener("session-updated", handler);
   }, [activeSessionId]);
 
   return { sessions, activeSessionId, isLoading, selectSession, createSession };

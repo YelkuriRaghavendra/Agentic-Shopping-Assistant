@@ -136,6 +136,7 @@ class SessionResponse(BaseModel):
     customer_id:   uuid.UUID | None
     channel:       str
     status:        str
+    title:         str | None
     message_count: int
     total_tokens:  int
     started_at:    datetime
@@ -154,6 +155,15 @@ class CustomerResponse(BaseModel):
     created_at:  datetime
 
     model_config = {"from_attributes": True}
+
+
+class CreateMessageRequest(BaseModel):
+    """Create a system/order message directly (no LLM)."""
+    session_id: uuid.UUID
+    content: str
+    role: str = "assistant"
+    intent: str | None = "order_confirmation"
+    cited_products: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class MessageResponse(BaseModel):

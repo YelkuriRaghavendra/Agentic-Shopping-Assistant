@@ -117,6 +117,16 @@ class SessionRepository(BaseRepository[Session]):
         session.context = context
         self.mark_modified(session, "context")
 
+    async def update_title(
+        self,
+        session_id: uuid.UUID,
+        title: str,
+    ) -> None:
+        """Update session title (LLM-generated conversation summary)."""
+        session = await self.get_by_id(session_id)
+        if session:
+            session.title = title[:100]  # Truncate to max length
+
     async def end(self, session_id: uuid.UUID) -> Session | None:
         session = await self.get_by_id(session_id)
         if session:

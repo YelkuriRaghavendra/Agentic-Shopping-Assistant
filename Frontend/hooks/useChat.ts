@@ -60,17 +60,20 @@ export function useChat(
   const [error, setError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const loadingRef = useRef(false);
+  const loadingStartRef = useRef<number | null>(null);
 
   /** Update active session and refresh sidebar when a new session is created */
   const syncSession = useCallback((newSessionId: string) => {
     setActiveSessionId((prev) => {
       if (prev !== newSessionId) {
-        // New session detected — refresh sidebar list and sync URL
+        // Refresh sidebar session list
         queryClient.invalidateQueries({ queryKey: ["sessions", customerId] });
-        // localStorage.setItem("session_updated", Date.now().toString());
+        // Sync URL for deep linking
         const url = new URL(window.location.href);
         url.searchParams.set("session", newSessionId);
         window.history.replaceState({}, "", url.toString());
+        // Notify useSessions via custom event (no polling needed)
+        window.dispatchEvent(new Event("session-updated"));
       }
       return newSessionId;
     });
@@ -78,6 +81,7 @@ export function useChat(
 
   const setLoading = useCallback((val: boolean) => {
     loadingRef.current = val;
+    loadingStartRef.current = val ? Date.now() : null;
     setIsLoading(val);
   }, []);
 
@@ -143,10 +147,63 @@ export function useChat(
           streamDone: true,
         };
       });
+    // Hydrate order confirmation cards — fetch order details for messages with order IDs
+    const orderPattern = /order #?([\w-]+)/i;
+    const hydrateOrders = async () => {
+      if (!customerId) return;
+
+      // Fetch all orders for this customer in one call
+      let allOrders: any[] = [];
+      try {
+        const res = await fetch(endpoints.orderHistory(customerId));
+        if (res.ok) {
+          const body = await res.json();
+          allOrders = body.data ?? body.orders ?? body ?? [];
+        }
+      } catch { /* ignore */ }
+
+      if (allOrders.length === 0) return;
+
+      // Build a map of orderId → order data
+      const orderMap = new Map<string, any>();
+      for (const o of allOrders) {
+        const id = (o.orderId ?? o.order_id ?? "").toLowerCase();
+        if (id) orderMap.set(id, o);
+      }
+
+      const updated = loaded.map((msg) => {
+        if (msg.role !== "bot") return msg;
+        const match = msg.content.match(orderPattern);
+        if (!match) return msg;
+        const orderId = match[1];
+        const db = orderMap.get(orderId.toLowerCase());
+        if (!db) return msg;
+
+        const orderConfirmation: OrderConfirmation = {
+          order_id: db.orderId ?? db.order_id ?? orderId,
+          line_items: (db.lineItems ?? db.line_items ?? []).map((li: any) => ({
+            item: { id: li.item?.id ?? "", title: li.item?.title ?? "", price: li.item?.price ?? 0 },
+            quantity: li.quantity ?? 1,
+          })),
+          totals: {
+            subtotal_cents: db.totals?.subtotalCents ?? db.totals?.subtotal_cents ?? 0,
+            tax_cents: db.totals?.taxCents ?? db.totals?.tax_cents ?? 0,
+            grand_total_cents: db.totals?.grandTotalCents ?? db.totals?.grand_total_cents ?? 0,
+          },
+          status: db.status ?? "processing",
+        };
+        return { ...msg, orderConfirmation };
+      });
+      setMessages(updated);
+    };
+
     setMessages(loaded);
     setActiveSessionId(sessionId);
     setSessionEnded(false);
     scrollToBottom();
+
+    // Hydrate order cards in background (non-blocking)
+    hydrateOrders();
   }, [historyData, sessionId, scrollToBottom]);
 
   // Check session status from cached sessions data to persist ended state across refreshes
@@ -165,7 +222,14 @@ export function useChat(
     async (text: string, imageBase64?: string) => {
       const trimmed = text.trim();
       if (!trimmed && !imageBase64) return;
-      if (loadingRef.current) return;
+      // If a previous request is stuck loading for >30s, force-reset
+      if (loadingRef.current) {
+        if (loadingStartRef.current && Date.now() - loadingStartRef.current > 30000) {
+          setLoading(false);
+        } else {
+          return;
+        }
+      }
 
       // Slash command: /start — allowed even when session is ended
       if (trimmed.toLowerCase() === "/start") {
@@ -432,7 +496,15 @@ export function useChat(
   // Shared streaming helper for product/compare messages
   const streamRequest = useCallback(
     async (displayText: string, apiMessage: string) => {
-      if (sessionEnded || loadingRef.current) return;
+      if (sessionEnded) return;
+      // If a previous request is stuck loading for >30s, force-reset
+      if (loadingRef.current) {
+        if (loadingStartRef.current && Date.now() - loadingStartRef.current > 30000) {
+          setLoading(false);
+        } else {
+          return;
+        }
+      }
 
       const userMessage: ChatMessageUI = {
         id: generateId(),
@@ -603,19 +675,63 @@ export function useChat(
   );
 
   const addOrderConfirmation = useCallback(
-    (order: OrderConfirmation) => {
-      const botMessage: ChatMessageUI = {
-        id: generateId(),
+    async (order: OrderConfirmation) => {
+      let finalOrder = order;
+      try {
+        const res = await fetch(endpoints.orderDetail(order.order_id));
+        if (res.ok) {
+          const db = await res.json();
+          finalOrder = {
+            order_id: db.orderId ?? db.order_id ?? order.order_id,
+            line_items: db.lineItems ?? db.line_items ?? order.line_items,
+            totals: {
+              subtotal_cents: db.totals?.subtotalCents ?? db.totals?.subtotal_cents ?? order.totals.subtotal_cents,
+              tax_cents: db.totals?.taxCents ?? db.totals?.tax_cents ?? order.totals.tax_cents,
+              grand_total_cents: db.totals?.grandTotalCents ?? db.totals?.grand_total_cents ?? order.totals.grand_total_cents,
+            },
+            status: db.status ?? order.status,
+          };
+        }
+      } catch {
+        // DB not ready yet — use checkout data
+      }
+
+      const orderContent = `Your order #${finalOrder.order_id} has been placed successfully! 🎉`;
+      const confirmMsg: ChatMessageUI = {
+        id: finalOrder.order_id,
         role: "bot",
-        content: "Your order has been confirmed! Here are the details:",
+        content: orderContent,
         timestamp: new Date(),
-        orderConfirmation: order,
+        orderConfirmation: finalOrder,
         streamDone: true,
       };
-      setMessages((prev) => [...prev, botMessage]);
+      setMessages((prev) => {
+        // Avoid duplicate
+        if (prev.some((m) => m.id === finalOrder.order_id)) return prev;
+        return [...prev, confirmMsg];
+      });
       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+
+      // Persist to backend DB so it shows on reload
+      if (activeSessionId) {
+        try {
+          await fetch(endpoints.createMessage, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              session_id: activeSessionId,
+              content: orderContent,
+              role: "assistant",
+              intent: "order_confirmation",
+              cited_products: [finalOrder],
+            }),
+          });
+        } catch {
+          // Non-critical — local message already shown
+        }
+      }
     },
-    []
+    [activeSessionId]
   );
 
   return {
