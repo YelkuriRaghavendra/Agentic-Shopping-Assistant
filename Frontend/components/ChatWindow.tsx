@@ -24,6 +24,7 @@ export interface ChatWindowProps {
   customerId?: string | null;
   updateProfile?: (profile: Record<string, unknown>) => Promise<void>;
   addOrderConfirmation?: (order: OrderConfirmation) => void;
+  nodeStatus?: string;
 }
 
 function HistorySkeleton() {
@@ -50,6 +51,7 @@ export function ChatWindow({
   customerId,
   updateProfile,
   addOrderConfirmation,
+  nodeStatus,
 }: ChatWindowProps) {
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [checkoutData, setCheckoutData] = useState<CheckoutData | null>(null);
@@ -173,7 +175,7 @@ export function ChatWindow({
               />
             ))}
             {isTyping && !messages.some((m) => m.role === "bot" && !m.streamDone) && (
-              <TypingIndicator key="typing" />
+              <TypingIndicator key="typing" statusText={nodeStatus} />
             )}
           </AnimatePresence>
         )}

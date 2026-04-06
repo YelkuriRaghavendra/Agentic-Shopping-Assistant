@@ -75,15 +75,18 @@ export function useSessions(customerId: string | null): UseSessionsReturn {
     return () => window.removeEventListener("storage", handler);
   }, [customerId, queryClient]);
 
-  // Listen for same-tab URL changes (e.g. from useChat syncing session_id)
+  // Listen for same-tab URL changes (e.g. from useChat syncing session_id via
+  // syncSession which calls history.replaceState). We use popstate for back/forward
+  // navigation and a MutationObserver-free approach: check on popstate only.
   useEffect(() => {
-    const interval = setInterval(() => {
+    const handler = () => {
       const urlSession = getSessionFromUrl();
       if (urlSession && urlSession !== activeSessionId) {
         setActiveSessionId(urlSession);
       }
-    }, 500);
-    return () => clearInterval(interval);
+    };
+    window.addEventListener("popstate", handler);
+    return () => window.removeEventListener("popstate", handler);
   }, [activeSessionId]);
 
   return { sessions, activeSessionId, isLoading, selectSession, createSession };
