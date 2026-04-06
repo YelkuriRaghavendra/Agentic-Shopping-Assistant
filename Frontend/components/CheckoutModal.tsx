@@ -63,60 +63,21 @@ export function CheckoutModal({
   const baseUrl = process.env.NEXT_PUBLIC_CHECKOUT_URL || "http://localhost:3001";
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Reset step when modal opens with new data
+  // Reset step when modal opens
   useEffect(() => {
     if (open) {
       setStep(hasAddresses ? "select-address" : "address");
       setUsedSavedAddress(false);
       setAddressError(null);
-    }
-  }, [open, hasAddresses]);
-
-  // Poll session status every 3s while awaiting payment
-  useEffect(() => {
-    if (step !== "awaiting") {
       if (pollRef.current) clearInterval(pollRef.current);
-      return;
     }
-
-    const poll = async () => {
-      try {
-        const res = await fetch(
-          `${baseUrl}/commerce/checkout/sessions/${checkout_session_id}`,
-          { method: "GET", headers: { "Content-Type": "application/json" } }
-        );
-        if (!res.ok) return;
-        const session = await res.json();
-        const status: string = session.ucpStatus ?? session.status ?? "";
-
-        if (status === "completed") {
-          clearInterval(pollRef.current!);
-          setStep("success");
-          const orderInfo: OrderConfirmation = {
-            order_id: session.ucpOrderId ?? session.ucp_order_id ?? checkout_session_id,
-            line_items: line_items,
-            totals: totals,
-            status: "processing",
-          };
-          onComplete(orderInfo);
-        } else if (status === "payment_failed") {
-          clearInterval(pollRef.current!);
-          setStep("failed");
-        }
-      } catch {
-        // ignore poll errors — keep trying
-      }
-    };
-
-    pollRef.current = setInterval(poll, 3000);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, [step, baseUrl, checkout_session_id, onComplete]);
+  }, [open, hasAddresses]);
 
   // Save address to profile after successful checkout (only if manually entered)
   useEffect(() => {
     if (step !== "success" || usedSavedAddress || !updateProfile || !customerId) return;
     if (!fullName.trim() || !addressLine.trim()) return;
-
     const newAddress: SavedAddress = {
       id: `addr_${Date.now()}`,
       label: "Home",
@@ -128,17 +89,105 @@ export function CheckoutModal({
       phone: phone.trim(),
       is_default: savedAddresses.length === 0,
     };
-
-    // Check if this address already exists (by address_line + pincode)
     const exists = savedAddresses.some(
       (a) => a.address_line === newAddress.address_line && a.pincode === newAddress.pincode
     );
-    if (!exists) {
-      updateProfile({ addresses: [...savedAddresses, newAddress] });
-    }
-  // Run only once when step becomes "success"
+    if (!exists) updateProfile({ addresses: [...savedAddresses, newAddress] });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]);
+
+
+
+  // Poll session status while awaiting payment
+  // Waits up to 2 minutes for Stripe webhook to update backend status
+  useEffect(() => {
+    if (step !== "awaiting") {
+      if (pollRef.current) clearInterval(pollRef.current);
+      return;
+    }
+
+    let pollCount = 0;
+    const maxPolls = 40; // 40 polls × 3 seconds = 120 seconds (2 minutes max)
+    let isFirstPoll = true;
+
+    const poll = async () => {
+      pollCount++;
+      console.log(`[CheckoutModal] Poll #${pollCount}/${maxPolls} for session ${checkout_session_id}`);
+
+      // Safety check: don't poll forever
+      if (pollCount > maxPolls) {
+        clearInterval(pollRef.current!);
+        console.warn(`[CheckoutModal] Polling timeout after ${maxPolls * 3}s`);
+        setAddressError(
+          "Payment confirmation took too long. Please check your bank statement, then click 'Continue Shopping' to verify your order."
+        );
+        setStep("address");
+        return;
+      }
+
+      try {
+        const res = await fetch(
+          `${baseUrl}/commerce/checkout-sessions/${checkout_session_id}`,
+          { method: "GET", headers: { "Content-Type": "application/json" } }
+        );
+        if (!res.ok) {
+          console.warn(`[CheckoutModal] Poll response not OK: ${res.status}`);
+          return; // Silently retry on network errors
+        }
+        
+        const session = await res.json();
+        const status: string = session.ucpStatus ?? session.status ?? "";
+        console.log(`[CheckoutModal] Poll #${pollCount}: status = ${status}`);
+
+        // On first poll: verify session wasn't already completed
+        if (isFirstPoll) {
+          isFirstPoll = false;
+          if (status === "completed") {
+            // Session was already completed before payment started
+            console.warn(`[CheckoutModal] Session was already completed on first poll`);
+            clearInterval(pollRef.current!);
+            setAddressError("This checkout session has already been used. Please start a new checkout.");
+            setStep("address");
+            return;
+          }
+        }
+
+        // Payment was successfully processed
+        if (status === "completed") {
+          console.log(`[CheckoutModal] ✅ Payment completed! Order ID: ${session.ucpOrderId}`);
+          clearInterval(pollRef.current!);
+          setStep("success");
+          onComplete({
+            order_id: session.ucpOrderId ?? checkout_session_id,
+            line_items,
+            totals,
+            status: "processing",
+          });
+        }
+        // Payment failed
+        else if (status === "payment_failed") {
+          console.warn(`[CheckoutModal] ❌ Payment failed`);
+          clearInterval(pollRef.current!);
+          setStep("failed");
+        }
+        // Still awaiting payment (keep polling)
+      } catch (err) {
+        console.warn(`[CheckoutModal] Poll error:`, err);
+        // Silently retry on network/parse errors
+      }
+    };
+
+    // Start polling: every 3 seconds
+    console.log(`[CheckoutModal] Starting payment poll for session: ${checkout_session_id}`);
+    pollRef.current = setInterval(poll, 3000);
+    // Run first poll immediately (don't wait 3 seconds)
+    void poll();
+
+    return () => {
+      console.log(`[CheckoutModal] Stopping payment poll (step changed to: ${step})`);
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [step, baseUrl, checkout_session_id, line_items, totals, onComplete]);
 
   const selectSavedAddress = (addr: SavedAddress) => {
     setFullName(addr.full_name);
@@ -152,28 +201,24 @@ export function CheckoutModal({
 
   const handleUseSavedAddress = (addr: SavedAddress) => {
     selectSavedAddress(addr);
-    // Skip address form, go straight to payment
-    proceedToPayment();
+    void submitPaymentLink();
   };
 
-  const proceedToPayment = async () => {
+  const submitPaymentLink = async () => {
     setAddressError(null);
     setIsSubmitting(true);
     setStep("redirecting");
-
     try {
       const res = await fetch(
-        `${baseUrl}/commerce/checkout/sessions/${checkout_session_id}/payment-link`,
+        `${baseUrl}/commerce/checkout-sessions/${checkout_session_id}/payment-link`,
         { method: "POST", headers: { "Content-Type": "application/json" } }
       );
-
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         setAddressError(body?.message || "Could not create payment link. Please try again.");
         setStep("address");
         return;
       }
-
       const { url } = await res.json();
       window.open(url, "_blank");
       setStep("awaiting");
@@ -188,7 +233,7 @@ export function CheckoutModal({
   const handleAddressSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!fullName.trim() || !addressLine.trim() || !city.trim() || !pincode.trim()) return;
-    await proceedToPayment();
+    await submitPaymentLink();
   };
 
   const handleClose = () => {
@@ -235,7 +280,7 @@ export function CheckoutModal({
               {step === "success" ? "Order Confirmed" : step === "failed" ? "Payment Failed" : step === "select-address" ? "Delivery Address" : "Checkout"}
             </h2>
 
-            {/* Order Summary — show on address + awaiting steps */}
+            {/* Order Summary */}
             {(step === "select-address" || step === "address" || step === "redirecting" || step === "awaiting") && (
               <div className="mb-6 p-4 rounded-xl" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
                 <p className={labelStyle} style={labelColor}>Order Summary</p>
@@ -254,7 +299,7 @@ export function CheckoutModal({
               </div>
             )}
 
-            {/* Select Saved Address Step */}
+            {/* Select Saved Address */}
             {step === "select-address" && (
               <div className="flex flex-col gap-3">
                 <p className={labelStyle} style={labelColor}>Saved Addresses</p>
@@ -264,46 +309,28 @@ export function CheckoutModal({
                     type="button"
                     onClick={() => handleUseSavedAddress(addr)}
                     className="w-full text-left p-4 rounded-xl transition-all duration-200 hover:scale-[1.01]"
-                    style={{
-                      background: "rgba(255,255,255,0.02)",
-                      border: "1px solid rgba(29,158,117,0.2)",
-                      cursor: "pointer",
-                    }}
+                    style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(29,158,117,0.2)", cursor: "pointer" }}
                     onMouseEnter={(e) => { e.currentTarget.style.borderColor = "rgba(29,158,117,0.5)"; }}
                     onMouseLeave={(e) => { e.currentTarget.style.borderColor = "rgba(29,158,117,0.2)"; }}
                   >
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-[12px] font-semibold" style={{ color: "rgba(255,255,255,0.8)" }}>
-                        {addr.full_name}
-                      </span>
+                      <span className="text-[12px] font-semibold" style={{ color: "rgba(255,255,255,0.8)" }}>{addr.full_name}</span>
                       {addr.is_default && (
                         <span className="text-[9px] font-mono uppercase px-2 py-0.5 rounded-full"
-                          style={{ color: "#1D9E75", background: "rgba(29,158,117,0.1)", letterSpacing: "1px" }}>
-                          Default
-                        </span>
+                          style={{ color: "#1D9E75", background: "rgba(29,158,117,0.1)", letterSpacing: "1px" }}>Default</span>
                       )}
                     </div>
                     <p className="text-[11px]" style={{ color: "rgba(255,255,255,0.45)" }}>
                       {addr.address_line}, {addr.city}{addr.state ? `, ${addr.state}` : ""} - {addr.pincode}
                     </p>
-                    {addr.phone && (
-                      <p className="text-[10px] mt-1" style={{ color: "rgba(255,255,255,0.3)" }}>{addr.phone}</p>
-                    )}
+                    {addr.phone && <p className="text-[10px] mt-1" style={{ color: "rgba(255,255,255,0.3)" }}>{addr.phone}</p>}
                   </button>
                 ))}
                 <button
                   type="button"
                   onClick={() => { setUsedSavedAddress(false); setStep("address"); }}
                   className="w-full py-3 font-josefin font-bold uppercase tracking-widest text-xs mt-1"
-                  style={{
-                    background: "transparent",
-                    border: "1px solid rgba(255,255,255,0.1)",
-                    color: "rgba(255,255,255,0.5)",
-                    borderRadius: "4px",
-                    letterSpacing: "2px",
-                    fontSize: "11px",
-                    cursor: "pointer",
-                  }}
+                  style={{ background: "transparent", border: "1px solid rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.5)", borderRadius: "4px", letterSpacing: "2px", fontSize: "11px", cursor: "pointer" }}
                 >
                   + Enter New Address
                 </button>
@@ -314,12 +341,9 @@ export function CheckoutModal({
             {step === "address" && (
               <form onSubmit={handleAddressSubmit} className="flex flex-col gap-3">
                 {hasAddresses && (
-                  <button
-                    type="button"
-                    onClick={() => setStep("select-address")}
+                  <button type="button" onClick={() => setStep("select-address")}
                     className="self-start text-[11px] mb-1"
-                    style={{ color: "rgba(29,158,117,0.8)", cursor: "pointer", background: "none", border: "none" }}
-                  >
+                    style={{ color: "rgba(29,158,117,0.8)", cursor: "pointer", background: "none", border: "none" }}>
                     &larr; Use saved address
                   </button>
                 )}
@@ -327,30 +351,26 @@ export function CheckoutModal({
                   <label className={labelStyle} style={labelColor}>Full Name</label>
                   <input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="John Doe" required style={inputStyle}
                     onFocus={(e) => { e.target.style.borderColor = "rgba(29,158,117,0.45)"; }}
-                    onBlur={(e) => { e.target.style.borderColor = "rgba(255,255,255,0.09)"; }}
-                  />
+                    onBlur={(e) => { e.target.style.borderColor = "rgba(255,255,255,0.09)"; }} />
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <label className={labelStyle} style={labelColor}>Address</label>
                   <input value={addressLine} onChange={(e) => setAddressLine(e.target.value)} placeholder="123 Main Street" required style={inputStyle}
                     onFocus={(e) => { e.target.style.borderColor = "rgba(29,158,117,0.45)"; }}
-                    onBlur={(e) => { e.target.style.borderColor = "rgba(255,255,255,0.09)"; }}
-                  />
+                    onBlur={(e) => { e.target.style.borderColor = "rgba(255,255,255,0.09)"; }} />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="flex flex-col gap-1.5">
                     <label className={labelStyle} style={labelColor}>City</label>
                     <input value={city} onChange={(e) => setCity(e.target.value)} placeholder="Mumbai" required style={inputStyle}
                       onFocus={(e) => { e.target.style.borderColor = "rgba(29,158,117,0.45)"; }}
-                      onBlur={(e) => { e.target.style.borderColor = "rgba(255,255,255,0.09)"; }}
-                    />
+                      onBlur={(e) => { e.target.style.borderColor = "rgba(255,255,255,0.09)"; }} />
                   </div>
                   <div className="flex flex-col gap-1.5">
                     <label className={labelStyle} style={labelColor}>State</label>
                     <input value={state} onChange={(e) => setState(e.target.value)} placeholder="Maharashtra" style={inputStyle}
                       onFocus={(e) => { e.target.style.borderColor = "rgba(29,158,117,0.45)"; }}
-                      onBlur={(e) => { e.target.style.borderColor = "rgba(255,255,255,0.09)"; }}
-                    />
+                      onBlur={(e) => { e.target.style.borderColor = "rgba(255,255,255,0.09)"; }} />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
@@ -358,20 +378,16 @@ export function CheckoutModal({
                     <label className={labelStyle} style={labelColor}>Pincode</label>
                     <input value={pincode} onChange={(e) => setPincode(e.target.value)} placeholder="400001" required style={inputStyle}
                       onFocus={(e) => { e.target.style.borderColor = "rgba(29,158,117,0.45)"; }}
-                      onBlur={(e) => { e.target.style.borderColor = "rgba(255,255,255,0.09)"; }}
-                    />
+                      onBlur={(e) => { e.target.style.borderColor = "rgba(255,255,255,0.09)"; }} />
                   </div>
                   <div className="flex flex-col gap-1.5">
                     <label className={labelStyle} style={labelColor}>Phone</label>
                     <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+91 98765 43210" style={inputStyle}
                       onFocus={(e) => { e.target.style.borderColor = "rgba(29,158,117,0.45)"; }}
-                      onBlur={(e) => { e.target.style.borderColor = "rgba(255,255,255,0.09)"; }}
-                    />
+                      onBlur={(e) => { e.target.style.borderColor = "rgba(255,255,255,0.09)"; }} />
                   </div>
                 </div>
-                {addressError && (
-                  <p className="text-[11px]" style={{ color: "#f87171" }}>{addressError}</p>
-                )}
+                {addressError && <p className="text-[11px]" style={{ color: "#f87171" }}>{addressError}</p>}
                 <button
                   type="submit"
                   disabled={isSubmitting || !fullName.trim() || !addressLine.trim() || !city.trim() || !pincode.trim()}
@@ -402,8 +418,11 @@ export function CheckoutModal({
                 <p className="text-[14px] mb-2 font-semibold" style={{ color: "rgba(255,255,255,0.85)" }}>
                   Waiting for payment confirmation…
                 </p>
-                <p className="text-[11px]" style={{ color: "rgba(255,255,255,0.4)" }}>
-                  Complete your payment in the Stripe tab. This will update automatically.
+                <p className="text-[11px] mb-4" style={{ color: "rgba(255,255,255,0.4)" }}>
+                  Complete your payment in the Stripe tab. This will update automatically within 2 minutes.
+                </p>
+                <p className="text-[10px] font-mono" style={{ color: "rgba(255,255,255,0.25)" }}>
+                  If the payment was successful but this doesn't update, your order was placed and you'll receive a confirmation email.
                 </p>
                 <button
                   type="button"

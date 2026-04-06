@@ -42,19 +42,21 @@ export const MessageBubble = memo(function MessageBubble({ message, onSelectProd
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25, ease: "easeOut" }}
-      className={cn("flex w-full gap-3 px-6 py-2", isUser ? "flex-row-reverse" : "flex-row")}
+      className="flex w-full flex-col px-6 py-2 gap-2"
     >
-      {/* Avatar */}
-      <div
-        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[9px] font-mono uppercase tracking-wider"
-        style={
-          isUser
-            ? { background: "#1D9E75", color: "#000" }
-            : { background: "#111116", border: "1px solid rgba(29,158,117,0.3)", color: "#1D9E75" }
-        }
-      >
-        {isUser ? "U" : "Vy"}
-      </div>
+      {/* Avatar + bubble row */}
+      <div className={cn("flex w-full gap-3", isUser ? "flex-row-reverse" : "flex-row")}>
+        {/* Avatar */}
+        <div
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[9px] font-mono uppercase tracking-wider"
+          style={
+            isUser
+              ? { background: "#1D9E75", color: "#000" }
+              : { background: "#111116", border: "1px solid rgba(29,158,117,0.3)", color: "#1D9E75" }
+          }
+        >
+          {isUser ? "U" : "Vy"}
+        </div>
 
       {/* Bubble + extras */}
       <div className={cn("flex max-w-[80%] flex-col gap-2", isUser ? "items-end" : "items-start")}>
@@ -106,11 +108,6 @@ export const MessageBubble = memo(function MessageBubble({ message, onSelectProd
           )}
         </div>
 
-        {/* Product slider */}
-        {!isUser && message.citedProducts && message.citedProducts.length > 0 && onSelectProduct && (
-          <ProductSlider products={message.citedProducts} onSelectProduct={onSelectProduct} onCompareProducts={onCompareProducts} />
-        )}
-
         {/* Order Confirmation Card */}
         {!isUser && message.orderConfirmation && (
           <OrderConfirmationCard order={message.orderConfirmation} />
@@ -145,6 +142,14 @@ export const MessageBubble = memo(function MessageBubble({ message, onSelectProd
           {formatTimestamp(message.timestamp)}
         </span>
       </div>
+      </div>{/* end avatar+bubble row */}
+
+      {/* Product slider — full width below the bubble row */}
+      {!isUser && message.citedProducts && message.citedProducts.length > 0 && onSelectProduct && (
+        <div className="pl-10">
+          <ProductSlider products={message.citedProducts} onSelectProduct={onSelectProduct} onCompareProducts={onCompareProducts} />
+        </div>
+      )}
     </motion.div>
   );
 });

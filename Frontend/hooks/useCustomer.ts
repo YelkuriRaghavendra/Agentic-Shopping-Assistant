@@ -15,6 +15,7 @@ export interface UseCustomerReturn {
   updateProfile: (profile: Record<string, unknown>) => Promise<void>;
   queueMessage: (text: string) => void;
   pendingMessage: string | null;
+  logout: () => void;
 }
 
 export default function useCustomer(): UseCustomerReturn {
@@ -82,6 +83,12 @@ export default function useCustomer(): UseCustomerReturn {
     setPendingMessage(text);
   }, []);
 
+  const logout = useCallback(() => {
+    localStorage.removeItem("customer_id");
+    setCustomer(null);
+    setDialogOpen(true);
+  }, []);
+
   return {
     customer,
     customerId: customer?.customer_id ?? null,
@@ -92,5 +99,6 @@ export default function useCustomer(): UseCustomerReturn {
     updateProfile,
     queueMessage,
     pendingMessage,
+    logout,
   };
 }

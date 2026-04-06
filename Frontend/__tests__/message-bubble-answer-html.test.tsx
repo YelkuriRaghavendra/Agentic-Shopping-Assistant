@@ -29,6 +29,7 @@ function makeBotMessage(answerHtml: string): ChatMessageUI {
     content: "fallback content",
     answerHtml,
     timestamp: new Date("2024-01-01T00:00:00Z"),
+    streamDone: true,
   };
 }
 

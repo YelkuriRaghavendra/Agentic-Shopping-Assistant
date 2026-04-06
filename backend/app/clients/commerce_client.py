@@ -79,7 +79,7 @@ class CommerceClient(BaseHTTPClient):
         if context:
             payload["context"] = context
         return await self._commerce_post(
-            "/commerce/checkout/sessions", payload, request_id
+            "/commerce/checkout-sessions", payload, request_id
         )
 
     async def update_checkout_session(
@@ -105,7 +105,7 @@ class CommerceClient(BaseHTTPClient):
         if payment_instrument:
             payload["payment_instrument"] = payment_instrument
         return await self._commerce_put(
-            f"/commerce/checkout/sessions/{session_id}", payload, request_id
+            f"/commerce/checkout-sessions/{session_id}", payload, request_id
         )
 
     async def complete_checkout_session(
@@ -120,7 +120,7 @@ class CommerceClient(BaseHTTPClient):
         """
         payload = {"payment_instrument": payment_instrument}
         return await self._commerce_post(
-            f"/commerce/checkout/sessions/{session_id}/complete", payload, request_id
+            f"/commerce/checkout-sessions/{session_id}/complete", payload, request_id
         )
 
     async def cancel_checkout_session(
@@ -133,7 +133,7 @@ class CommerceClient(BaseHTTPClient):
         Cancels a checkout session.
         """
         return await self._commerce_post(
-            f"/commerce/checkout/sessions/{session_id}/cancel", {}, request_id
+            f"/commerce/checkout-sessions/{session_id}/cancel", {}, request_id
         )
 
     async def get_checkout_session(
@@ -146,7 +146,7 @@ class CommerceClient(BaseHTTPClient):
         Returns local session state.
         """
         return await self._commerce_get(
-            f"/commerce/checkout/sessions/{session_id}", request_id=request_id
+            f"/commerce/checkout-sessions/{session_id}", request_id=request_id
         )
 
     # ── Order Operations ──────────────────────────────────────────────────

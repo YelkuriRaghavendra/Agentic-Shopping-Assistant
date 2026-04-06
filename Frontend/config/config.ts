@@ -20,6 +20,8 @@ export const endpoints = {
   uploadImage:      `${apiBaseUrl}${API_PREFIX}/chat/upload-image`,
   messageFeedback:  (id: string) => `${apiBaseUrl}${API_PREFIX}/chat/messages/${id}/feedback`,
   orderDetail:      (id: string) => `${commerceBaseUrl}/commerce/orders/${id}`,
+  activeCart:       (customerId: string) => `${commerceBaseUrl}/commerce/checkout-sessions?customerId=${customerId}`,
+  orderHistory:     (customerId: string) => `${commerceBaseUrl}/commerce/orders?customerId=${customerId}`,
 } as const;
 
 export { apiBaseUrl };
