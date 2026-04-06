@@ -219,7 +219,7 @@ graph TD
 - Markdown rendering (bold, lists, tables)
 - Product card carousel with multi-select compare
 - Contextual suggestion chips
-- Session management with titles and cross-tab sync
+- Session management with titles
 - Error boundary for crash recovery
 
 ---

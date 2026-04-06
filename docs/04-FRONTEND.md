@@ -150,7 +150,7 @@ Core chat logic and SSE streaming.
 **Key behaviors:**
 - SSE stream parsing with buffer handling
 - `filterValidProducts()` — removes products with price 0 or null
-- `syncSession()` — updates URL, invalidates session cache, cross-tab sync via localStorage
+- `syncSession()` — updates URL, invalidates session cache via local storage
 - Session ended detection from cached query data
 
 ### useCustomer — `hooks/useCustomer.ts`
@@ -168,8 +168,6 @@ Session management with React Query.
 |--------|-------------|
 | `selectSession(id)` | Set active + update URL |
 | `createSession(customerId)` | Create + set active + update URL immediately |
-
-**Cross-tab sync:** Listens for `localStorage("session_updated")` events. Polls URL for same-tab sync (500ms).
 
 ## Key Features
 

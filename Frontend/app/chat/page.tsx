@@ -87,6 +87,8 @@ export default function ChatPage() {
             isLoading={sessions.isLoading}
             onSelectSession={(id) => { sessions.selectSession(id); setSidebarOpen(false); }}
             onNewSession={() => { sessions.createSession(customer.customerId); setSidebarOpen(false); }}
+            customerId={customer.customerId}
+            onLogout={() => { customer.logout(); setSidebarOpen(false); }}
           />
         </div>
       </aside>

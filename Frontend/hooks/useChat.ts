@@ -62,7 +62,7 @@ export function useChat(
       if (prev !== newSessionId) {
         // New session detected — refresh sidebar list and sync URL
         queryClient.invalidateQueries({ queryKey: ["sessions", customerId] });
-        localStorage.setItem("session_updated", Date.now().toString());
+        // localStorage.setItem("session_updated", Date.now().toString());
         const url = new URL(window.location.href);
         url.searchParams.set("session", newSessionId);
         window.history.replaceState({}, "", url.toString());
@@ -206,7 +206,7 @@ export function useChat(
           await httpClient.post(endpoints.endSession(activeSessionId), {});
           setSessionEnded(true);
           queryClient.invalidateQueries({ queryKey: ["sessions"] });
-          localStorage.setItem("session_updated", Date.now().toString());
+          // localStorage.setItem("session_updated", Date.now().toString());
           const infoMsg: ChatMessageUI = {
             id: generateId(),
             role: "bot",
