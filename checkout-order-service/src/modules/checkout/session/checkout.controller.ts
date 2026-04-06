@@ -210,7 +210,7 @@ export class CheckoutController {
       btn.disabled = true;
       btn.textContent = 'Processing...';
       try {
-        const res = await fetch(BASE_URL + '/commerce/checkout/sessions/' + SESSION_ID + '/complete', {
+        const res = await fetch(BASE_URL + '/commerce/checkout-sessions/' + SESSION_ID + '/complete', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ payment_instrument: { type: 'card', last4: '4242' } }),

@@ -62,8 +62,6 @@ export function CheckoutModal({
   const { line_items, totals, checkout_session_id } = checkoutData;
   const baseUrl = process.env.NEXT_PUBLIC_CHECKOUT_URL || "http://localhost:3001";
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  // Track whether the session was already completed when we started polling
-  const sessionWasAlreadyCompletedRef = useRef(false);
 
   // Reset step when modal opens
   useEffect(() => {
@@ -98,33 +96,55 @@ export function CheckoutModal({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]);
 
-  // Poll session status every 3s while awaiting payment
+
+
+  // Poll session status while awaiting payment
+  // Waits up to 2 minutes for Stripe webhook to update backend status
   useEffect(() => {
     if (step !== "awaiting") {
       if (pollRef.current) clearInterval(pollRef.current);
       return;
     }
 
+    let pollCount = 0;
+    const maxPolls = 40; // 40 polls × 3 seconds = 120 seconds (2 minutes max)
     let isFirstPoll = true;
 
     const poll = async () => {
+      pollCount++;
+      console.log(`[CheckoutModal] Poll #${pollCount}/${maxPolls} for session ${checkout_session_id}`);
+
+      // Safety check: don't poll forever
+      if (pollCount > maxPolls) {
+        clearInterval(pollRef.current!);
+        console.warn(`[CheckoutModal] Polling timeout after ${maxPolls * 3}s`);
+        setAddressError(
+          "Payment confirmation took too long. Please check your bank statement, then click 'Continue Shopping' to verify your order."
+        );
+        setStep("address");
+        return;
+      }
+
       try {
         const res = await fetch(
           `${baseUrl}/commerce/checkout-sessions/${checkout_session_id}`,
           { method: "GET", headers: { "Content-Type": "application/json" } }
         );
-        if (!res.ok) return;
+        if (!res.ok) {
+          console.warn(`[CheckoutModal] Poll response not OK: ${res.status}`);
+          return; // Silently retry on network errors
+        }
+        
         const session = await res.json();
         const status: string = session.ucpStatus ?? session.status ?? "";
+        console.log(`[CheckoutModal] Poll #${pollCount}: status = ${status}`);
 
-        // On the first poll, record whether the session was already completed.
-        // If it was already completed before the user paid, ignore it — we need
-        // a fresh session. The backend should have created a new one.
+        // On first poll: verify session wasn't already completed
         if (isFirstPoll) {
           isFirstPoll = false;
           if (status === "completed") {
-            // Session was already completed before payment — this is a stale session.
-            // Stop polling and show an error so the user knows to retry.
+            // Session was already completed before payment started
+            console.warn(`[CheckoutModal] Session was already completed on first poll`);
             clearInterval(pollRef.current!);
             setAddressError("This checkout session has already been used. Please start a new checkout.");
             setStep("address");
@@ -132,7 +152,9 @@ export function CheckoutModal({
           }
         }
 
+        // Payment was successfully processed
         if (status === "completed") {
+          console.log(`[CheckoutModal] ✅ Payment completed! Order ID: ${session.ucpOrderId}`);
           clearInterval(pollRef.current!);
           setStep("success");
           onComplete({
@@ -141,20 +163,31 @@ export function CheckoutModal({
             totals,
             status: "processing",
           });
-        } else if (status === "payment_failed") {
+        }
+        // Payment failed
+        else if (status === "payment_failed") {
+          console.warn(`[CheckoutModal] ❌ Payment failed`);
           clearInterval(pollRef.current!);
           setStep("failed");
         }
-      } catch {
-        // ignore poll errors — keep trying
+        // Still awaiting payment (keep polling)
+      } catch (err) {
+        console.warn(`[CheckoutModal] Poll error:`, err);
+        // Silently retry on network/parse errors
       }
     };
 
+    // Start polling: every 3 seconds
+    console.log(`[CheckoutModal] Starting payment poll for session: ${checkout_session_id}`);
     pollRef.current = setInterval(poll, 3000);
-    // Run first poll immediately
+    // Run first poll immediately (don't wait 3 seconds)
     void poll();
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, [step, baseUrl, checkout_session_id, onComplete]);
+
+    return () => {
+      console.log(`[CheckoutModal] Stopping payment poll (step changed to: ${step})`);
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [step, baseUrl, checkout_session_id, line_items, totals, onComplete]);
 
   const selectSavedAddress = (addr: SavedAddress) => {
     setFullName(addr.full_name);
@@ -385,8 +418,11 @@ export function CheckoutModal({
                 <p className="text-[14px] mb-2 font-semibold" style={{ color: "rgba(255,255,255,0.85)" }}>
                   Waiting for payment confirmation…
                 </p>
-                <p className="text-[11px]" style={{ color: "rgba(255,255,255,0.4)" }}>
-                  Complete your payment in the Stripe tab. This will update automatically.
+                <p className="text-[11px] mb-4" style={{ color: "rgba(255,255,255,0.4)" }}>
+                  Complete your payment in the Stripe tab. This will update automatically within 2 minutes.
+                </p>
+                <p className="text-[10px] font-mono" style={{ color: "rgba(255,255,255,0.25)" }}>
+                  If the payment was successful but this doesn't update, your order was placed and you'll receive a confirmation email.
                 </p>
                 <button
                   type="button"
