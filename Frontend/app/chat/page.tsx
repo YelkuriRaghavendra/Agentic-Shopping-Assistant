@@ -102,6 +102,7 @@ export default function ChatPage() {
           customerId={customer.customerId}
           updateProfile={customer.updateProfile}
           addOrderConfirmation={chat.addOrderConfirmation}
+          nodeStatus={chat.nodeStatus}
         />
       </div>
 

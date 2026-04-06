@@ -3,7 +3,7 @@ Chat controller.
 
 HTTP boundary layer only:
   - Receive HTTP request
-  - Call the service
+  - Call the LangGraph agent
   - Return HTTP response
 
 No business logic here.
@@ -11,7 +11,6 @@ No SQL here.
 No LLM calls here.
 """
 
-import os
 import pathlib
 
 from fastapi import Depends, HTTPException, Request, UploadFile, status
@@ -25,13 +24,6 @@ from app.api.dto.chat_dto import (
     MessageHistoryResponse, MessageResponse,
     FeedbackRequest, FeedbackResponse,
 )
-from app.core.exceptions import (
-    ChatServiceError,
-    NotFoundError,
-    RateLimitError,
-    DomainValidationError,
-    TokenBudgetExceededError,
-)
 from app.core.logging import get_logger
 from app.db.session import get_db
 from app.db.repositories import (
@@ -39,60 +31,10 @@ from app.db.repositories import (
     SessionRepository,
     MessageRepository,
 )
-from app.clients.llm_client import LLMClient
-from app.clients.rag_client import RAGClient
-from app.clients.commerce_client import CommerceClient
-from app.services.chat_service import ChatService
-from app.services.feature_flag_service import FeatureFlagService
-from app.services.guardrails_service import GuardrailsService
-from app.services.memory_service import MemoryService
-from app.services.prompt_builder_service import PromptBuilderService
-from app.services.citation_service import CitationService
-from app.services.rate_limiter_service import RateLimiterService
-from app.services.tool_registry import ToolRegistry
-from app.services.skills.skill_registry import SkillRegistry
 
 import uuid
 
 logger = get_logger(__name__)
-
-# Module-level singletons for stateless services
-_llm_client    = LLMClient()
-_rag_client    = RAGClient()
-_commerce      = CommerceClient()
-_feature_flags = FeatureFlagService()
-_rate_limiter  = RateLimiterService()
-_guardrails    = GuardrailsService()
-_prompt        = PromptBuilderService()
-_citations     = CitationService()
-_skills        = SkillRegistry()
-
-
-def _make_chat_service(db: AsyncSession) -> ChatService:
-    """
-    Factory: builds ChatService with all dependencies wired up.
-    Called once per request.
-    """
-    session_repo  = SessionRepository(db)
-    customer_repo = CustomerRepository(db)
-    return ChatService(
-        db=db,
-        llm_client=_llm_client,
-        rag_client=_rag_client,
-        rate_limiter=_rate_limiter,
-        guardrails=_guardrails,
-        memory=MemoryService(session_repo, customer_repo),
-        prompt=_prompt,
-        citations=_citations,
-        tools=ToolRegistry(_rag_client),
-        skills=_skills,
-        commerce=_commerce,
-        feature_flags=_feature_flags,
-    )
-
-
-def _http_status_for(exc: ChatServiceError) -> int:
-    return exc.http_status
 
 
 class ChatController:
@@ -107,34 +49,21 @@ class ChatController:
         db: AsyncSession = Depends(get_db),
     ) -> ChatResponse:
         """
-        Main chat endpoint.
+        Main chat endpoint — powered by LangGraph agent.
         Auto-resolves session — no need to create a session first.
         """
-        try:
-            svc = _make_chat_service(db)
-            return await svc.handle(request)
-        except (DomainValidationError, TokenBudgetExceededError) as exc:
-            raise HTTPException(
-                status_code=exc.http_status,
-                detail=exc.message,
-            )
-        except RateLimitError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail=exc.message,
-                headers={"Retry-After": "60"},
-            )
-        except NotFoundError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=exc.message,
-            )
-        except ChatServiceError as exc:
-            logger.error("controller.unexpected_error", error=str(exc))
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="An unexpected error occurred. Please try again.",
-            )
+        import time
+        from app.graph import create_agent
+
+        agent = create_agent(db)
+        result = await agent.ainvoke(
+            {"request": request, "t_start": time.monotonic()},
+            config={"configurable": {"thread_id": str(request.session_id or "default")}},
+        )
+        response = result.get("response")
+        if not response:
+            raise HTTPException(status_code=500, detail="Agent returned no response")
+        return response
 
     async def send_message_stream(
         self,
@@ -143,21 +72,12 @@ class ChatController:
     ) -> StreamingResponse:
         """
         Streaming chat endpoint using Server-Sent Events.
-        Streams tokens as they arrive from the LLM.
+        Streams tokens via the LangGraph agent.
         """
-        svc = _make_chat_service(db)
-
-        async def event_generator():
-            try:
-                async for event in svc.handle_stream(request):
-                    yield event
-            except Exception as exc:
-                import json
-                logger.error("stream.failed", error=str(exc))
-                yield f"data: {json.dumps({'type': 'error', 'content': 'An unexpected error occurred.'})}\n\n"
+        from app.graph import stream_graph
 
         return StreamingResponse(
-            event_generator(),
+            stream_graph(request, db),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
