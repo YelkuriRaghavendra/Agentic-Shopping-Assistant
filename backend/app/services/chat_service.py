@@ -1093,7 +1093,7 @@ class ChatService:
         has_size = bool(slots.size)
         has_color = bool(slots.color)
         filled_count = sum([has_brand, has_budget, has_size, has_color])
-        ready = has_type and filled_count >= 1
+        ready = has_type and filled_count >= 2
 
         lines = [
             "CUSTOMER PREFERENCES COLLECTED:",
@@ -1120,8 +1120,18 @@ class ChatService:
         else:
             if not has_type:
                 lines.append("→ Not enough info yet. Ask what TYPE of shoes they want.")
-            else:
-                lines.append("→ Have type only. Ask about their BRAND preference or BUDGET range next. Do NOT search yet.")
+            elif not has_size and not has_budget:
+                lines.append("→ Ask about their SIZE and BUDGET range. Ask ONLY these two in one short question. Do NOT ask about brand or color yet. Do NOT search yet.")
+            elif not has_brand and not has_color:
+                lines.append("→ Ask about their BRAND preference and COLOR choice. Ask ONLY these two in one short question. Do NOT search yet.")
+            elif not has_brand:
+                lines.append("→ Ask about their BRAND preference only. Do NOT search yet.")
+            elif not has_color:
+                lines.append("→ Ask about their preferred COLOR only. Do NOT search yet.")
+            elif not has_size:
+                lines.append("→ Ask about their SIZE only. Do NOT search yet.")
+            elif not has_budget:
+                lines.append("→ Ask about their BUDGET range only. Do NOT search yet.")
 
         return "\n".join(lines)
 
