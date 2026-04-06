@@ -390,3 +390,151 @@ class TestCommerceClientSlotExtraction:
             session=session,
         )
         assert slots.get("line_items") == [{"item": {"id": "p1"}, "quantity": 2}]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Task 2.5 — add_to_cart routes to correct CommerceClient method
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestAddToCartSessionRouting:
+    """
+    Validates: Requirements 4.1, 7.1, 7.2
+    Property 14: add_to_cart routes to correct CommerceClient method
+    Property 21: Active session is reused across cart intents
+    """
+
+    def _make_service(self, commerce_mock):
+        from app.services.chat_service import ChatService
+        svc = object.__new__(ChatService)
+        svc._commerce = commerce_mock
+        return svc
+
+    @pytest.mark.asyncio
+    async def test_add_to_cart_calls_create_when_no_session(self):
+        """No checkout_session_id in context → create_checkout_session called."""
+        commerce = AsyncMock()
+        commerce.create_checkout_session = AsyncMock(
+            return_value=CommerceResponse(
+                success=True,
+                data={"sessionId": "new-session-123", "line_items_snapshot": []},
+            )
+        )
+        commerce.update_checkout_session = AsyncMock()
+
+        svc = self._make_service(commerce)
+
+        session = MagicMock()
+        session.context = {}  # no cart key
+
+        slots = {"product_id": "prod-1", "quantity": 2}
+        await svc._dispatch_commerce_intent(
+            intent="add_to_cart",
+            slots=slots,
+            customer_id="cust-1",
+            request_id="req-1",
+            session=session,
+        )
+
+        commerce.create_checkout_session.assert_called_once()
+        commerce.update_checkout_session.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_add_to_cart_stores_session_id_in_context(self):
+        """After create_checkout_session, sessionId stored in session.context['cart']."""
+        commerce = AsyncMock()
+        commerce.create_checkout_session = AsyncMock(
+            return_value=CommerceResponse(
+                success=True,
+                data={"sessionId": "new-session-abc"},
+            )
+        )
+
+        svc = self._make_service(commerce)
+
+        session = MagicMock()
+        session.context = {}
+
+        await svc._dispatch_commerce_intent(
+            intent="add_to_cart",
+            slots={"product_id": "prod-1", "quantity": 1},
+            customer_id="cust-1",
+            request_id="req-1",
+            session=session,
+        )
+
+        assert session.context.get("cart", {}).get("checkout_session_id") == "new-session-abc"
+
+    @pytest.mark.asyncio
+    async def test_add_to_cart_calls_update_when_session_exists(self):
+        """Existing checkout_session_id in context → update_checkout_session called."""
+        commerce = AsyncMock()
+        commerce.update_checkout_session = AsyncMock(
+            return_value=CommerceResponse(
+                success=True,
+                data={"sessionId": "existing-session-456", "line_items_snapshot": []},
+            )
+        )
+        commerce.create_checkout_session = AsyncMock()
+
+        svc = self._make_service(commerce)
+
+        session = MagicMock()
+        session.context = {"cart": {"checkout_session_id": "existing-session-456"}}
+
+        await svc._dispatch_commerce_intent(
+            intent="add_to_cart",
+            slots={"product_id": "prod-2", "quantity": 1},
+            customer_id="cust-1",
+            request_id="req-1",
+            session=session,
+        )
+
+        commerce.update_checkout_session.assert_called_once_with(
+            session_id="existing-session-456",
+            line_items=[{
+                "item": {
+                    "id": "prod-2",
+                    "title": "prod-2",
+                    "price": 0,
+                },
+                "quantity": 1,
+            }],
+            request_id="req-1",
+        )
+        commerce.create_checkout_session.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_add_to_cart_never_calls_wrong_method(self):
+        """
+        Property 14: For any add_to_cart intent, exactly one of create or update is called,
+        never both, and the choice depends solely on whether checkout_session_id is present.
+        """
+        for has_session in [True, False]:
+            commerce = AsyncMock()
+            commerce.create_checkout_session = AsyncMock(
+                return_value=CommerceResponse(success=True, data={"sessionId": "s1"})
+            )
+            commerce.update_checkout_session = AsyncMock(
+                return_value=CommerceResponse(success=True, data={})
+            )
+
+            svc = self._make_service(commerce)
+            session = MagicMock()
+            session.context = (
+                {"cart": {"checkout_session_id": "existing-id"}} if has_session else {}
+            )
+
+            await svc._dispatch_commerce_intent(
+                intent="add_to_cart",
+                slots={"product_id": "p1", "quantity": 1},
+                customer_id="c1",
+                request_id="r1",
+                session=session,
+            )
+
+            if has_session:
+                commerce.update_checkout_session.assert_called_once()
+                commerce.create_checkout_session.assert_not_called()
+            else:
+                commerce.create_checkout_session.assert_called_once()
+                commerce.update_checkout_session.assert_not_called()

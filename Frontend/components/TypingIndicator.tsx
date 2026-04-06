@@ -19,25 +19,36 @@ export function TypingIndicator() {
         Vy
       </div>
 
-      {/* Dots bubble */}
+      {/* Typing bubble */}
       <div
-        className="flex items-center gap-1.5 px-4 py-3"
+        className="flex items-center gap-3 px-4 py-3"
         style={{
           background: "#111116",
           border: "1px solid rgba(255,255,255,0.07)",
           borderRadius: "16px 16px 16px 4px",
         }}
       >
-        {[0, 1, 2].map((i) => (
-          <span
-            key={i}
-            className="block h-1.5 w-1.5 rounded-full animate-tdot"
-            style={{
-              background: "#1D9E75",
-              animationDelay: `${i * 0.15}s`,
-            }}
-          />
-        ))}
+        {/* Animated dots */}
+        <div className="flex items-center gap-1.5">
+          {[0, 1, 2].map((i) => (
+            <span
+              key={i}
+              className="block h-1.5 w-1.5 rounded-full animate-tdot"
+              style={{
+                background: "#1D9E75",
+                animationDelay: `${i * 0.15}s`,
+              }}
+            />
+          ))}
+        </div>
+
+        {/* Status text */}
+        <span
+          className="font-mono text-[9px] uppercase tracking-widest"
+          style={{ color: "rgba(255,255,255,0.25)", letterSpacing: "1.5px" }}
+        >
+          Finding the best options...
+        </span>
       </div>
     </motion.div>
   );

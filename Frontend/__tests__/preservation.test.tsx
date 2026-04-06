@@ -72,7 +72,8 @@ describe("Preservation: Observation baseline on unfixed code", () => {
     fireEvent.change(input, { target: { value: "hello" } });
     fireEvent.keyDown(input, { key: "Enter", code: "Enter" });
     expect(onSend).toHaveBeenCalledTimes(1);
-    expect(onSend).toHaveBeenCalledWith("hello");
+    // ChatInput passes (message, imageBase64?) — no image attached so second arg is undefined
+    expect(onSend).toHaveBeenCalledWith("hello", undefined);
   });
 
   it("3.5 ChatInput calls onSend when send button is clicked", () => {
@@ -83,7 +84,8 @@ describe("Preservation: Observation baseline on unfixed code", () => {
     const button = screen.getByRole("button", { name: /send/i });
     fireEvent.click(button);
     expect(onSend).toHaveBeenCalledTimes(1);
-    expect(onSend).toHaveBeenCalledWith("click test");
+    // ChatInput passes (message, imageBase64?) — no image attached so second arg is undefined
+    expect(onSend).toHaveBeenCalledWith("click test", undefined);
   });
 
   it("3.7 ChatInput does NOT call onSend when disabled=true", () => {

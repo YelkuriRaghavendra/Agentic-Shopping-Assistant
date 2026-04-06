@@ -69,12 +69,13 @@ describe("Bug Condition: No emoji icons or raw form elements in UI", () => {
 
   it("1.5 ChatInput does NOT contain a raw <input> element", () => {
     const { container } = render(<ChatInput onSend={() => {}} />);
-    // A raw <input> should not exist — only a shadcn/ui-wrapped one
-    const rawInputs = container.querySelectorAll("input");
-    // shadcn/ui Input renders an <input> internally, but it should NOT be a
-    // direct child of the container (it will be wrapped). On unfixed code the
-    // raw <input> is a direct child of the flex wrapper div.
-    const directInputChild = container.querySelector("div > input");
-    expect(directInputChild).toBeNull();
+    // A raw visible <input> should not be a direct child of the flex wrapper div.
+    // The hidden file input (aria-hidden, class="hidden") is acceptable.
+    // Only non-hidden direct div > input children are disallowed.
+    const directInputChildren = container.querySelectorAll("div > input");
+    const visibleDirectInputs = Array.from(directInputChildren).filter(
+      (el) => !el.classList.contains("hidden") && el.getAttribute("aria-hidden") !== "true"
+    );
+    expect(visibleDirectInputs).toHaveLength(0);
   });
 });

@@ -11,13 +11,24 @@ import type {
   MessageHistoryResponse,
   ProductCardDTO,
   SessionResponse,
+  OrderConfirmation,
+  CartData,
+  OrderHistoryData,
 } from "@/types/chat.types";
+
+/** Filter out products with missing image or product ID */
+function filterValidProducts(products?: ProductCardDTO[]): ProductCardDTO[] | undefined {
+  if (!products || products.length === 0) return products;
+  const filtered = products.filter((p) => p.productId != null && p.productId !== "");
+  return filtered.length > 0 ? filtered : undefined;
+}
 
 interface UseChatReturn {
   messages: ChatMessageUI[];
-  sendMessage: (text: string) => void;
+  sendMessage: (text: string, imageBase64?: string) => void;
   sendProductMessage: (productId: string, productName: string) => void;
   sendCompareMessage: (products: ProductCardDTO[]) => void;
+  addOrderConfirmation: (order: OrderConfirmation) => void;
   isLoading: boolean;
   isTyping: boolean;
   isHistoryLoading: boolean;
@@ -45,6 +56,21 @@ export function useChat(
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const loadingRef = useRef(false);
 
+  /** Update active session and refresh sidebar when a new session is created */
+  const syncSession = useCallback((newSessionId: string) => {
+    setActiveSessionId((prev) => {
+      if (prev !== newSessionId) {
+        // New session detected — refresh sidebar list and sync URL
+        queryClient.invalidateQueries({ queryKey: ["sessions", customerId] });
+        // localStorage.setItem("session_updated", Date.now().toString());
+        const url = new URL(window.location.href);
+        url.searchParams.set("session", newSessionId);
+        window.history.replaceState({}, "", url.toString());
+      }
+      return newSessionId;
+    });
+  }, [customerId, queryClient]);
+
   const setLoading = useCallback((val: boolean) => {
     loadingRef.current = val;
     setIsLoading(val);
@@ -71,7 +97,13 @@ export function useChat(
 
     const loaded: ChatMessageUI[] = historyData.messages
       .slice()
-      .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+      .sort((a, b) => {
+        const timeDiff = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+        if (timeDiff !== 0) return timeDiff;
+        // When timestamps are equal (same DB transaction), user messages come before bot
+        const roleOrder = (r: string) => (r.toLowerCase() === "user" ? 0 : 1);
+        return roleOrder(a.role) - roleOrder(b.role);
+      })
       .map((msg) => {
         const citedMeta = msg.cited_products?.[0] as Record<string, unknown> | undefined;
         const answerHtml =
@@ -107,9 +139,10 @@ export function useChat(
   }, [sessionId, customerId, queryClient]);
 
   const sendMessage = useCallback(
-    async (text: string) => {
+    async (text: string, imageBase64?: string) => {
       const trimmed = text.trim();
-      if (!trimmed || loadingRef.current) return;
+      if (!trimmed && !imageBase64) return;
+      if (loadingRef.current) return;
 
       // Slash command: /start — allowed even when session is ended
       if (trimmed.toLowerCase() === "/start") {
@@ -120,7 +153,7 @@ export function useChat(
             endpoints.createSession,
             { customer_id: customerId, channel: "web" }
           );
-          setActiveSessionId(newSession.session_id);
+          syncSession(newSession.session_id);
           setMessages([]);
           setSessionEnded(false);
           const infoMsg: ChatMessageUI = {
@@ -173,7 +206,7 @@ export function useChat(
           await httpClient.post(endpoints.endSession(activeSessionId), {});
           setSessionEnded(true);
           queryClient.invalidateQueries({ queryKey: ["sessions"] });
-          localStorage.setItem("session_updated", Date.now().toString());
+          // localStorage.setItem("session_updated", Date.now().toString());
           const infoMsg: ChatMessageUI = {
             id: generateId(),
             role: "bot",
@@ -202,22 +235,13 @@ export function useChat(
       const userMessage: ChatMessageUI = {
         id: generateId(),
         role: "user",
-        content: trimmed,
+        content: trimmed || "Here's my outfit, help me find matching shoes",
+        imageBase64: imageBase64,
         timestamp: new Date(),
       };
 
-      setMessages((prev) => [...prev, userMessage]);
-      setLoading(true);
-      setError(null);
-      scrollToBottom();
-
-      const body: ChatRequest = {
-        message: trimmed,
-        ...(customerId ? { customer_id: customerId } : {}),
-        ...(activeSessionId ? { session_id: activeSessionId } : {}),
-      };
-
-      // Create a placeholder bot message for streaming
+      // Add both user message and bot placeholder in a single state update
+      // to guarantee user message always appears above bot response
       const botId = generateId();
       const botMessage: ChatMessageUI = {
         id: botId,
@@ -225,7 +249,17 @@ export function useChat(
         content: "",
         timestamp: new Date(),
       };
-      setMessages((prev) => [...prev, botMessage]);
+      setMessages((prev) => [...prev, userMessage, botMessage]);
+      setLoading(true);
+      setError(null);
+      scrollToBottom();
+
+      const body: ChatRequest = {
+        message: trimmed || "Here's my outfit, help me find matching shoes",
+        ...(customerId ? { customer_id: customerId } : {}),
+        ...(activeSessionId ? { session_id: activeSessionId } : {}),
+        ...(imageBase64 ? { image_base64: imageBase64 } : {}),
+      };
 
       setIsTyping(true);
       try {
@@ -262,8 +296,7 @@ export function useChat(
                   const event = JSON.parse(jsonStr);
                   if (event.type === "done") {
                     const hasHtml = /<\/?(?:table|tr|td|th|ul|ol|li)\b/i.test(streamedContent);
-                    if (event.session_id) setActiveSessionId(event.session_id);
-                    if (event.checkout_data) console.log("[useChat] checkout_data from buffer:", event.checkout_data);
+                    if (event.session_id) syncSession(event.session_id);
                     setMessages((prev) =>
                       prev.map((m) =>
                         m.id === botId
@@ -272,10 +305,12 @@ export function useChat(
                               id: event.message_id || botId,
                               content: streamedContent,
                               answerHtml: hasHtml && event.answer_html ? event.answer_html : undefined,
-                              citedProducts: event.cited_products,
+                              citedProducts: filterValidProducts(event.cited_products),
                               suggestions: event.suggestions,
                               continueUrl: event.continue_url || undefined,
                               checkoutData: event.checkout_data || undefined,
+                              cartData: (event.cart_data as CartData) || undefined,
+                              orderHistoryData: (event.order_history_data as OrderHistoryData) || undefined,
                               streamDone: true,
                             }
                           : m
@@ -313,14 +348,7 @@ export function useChat(
                 // Use answer_html if content has HTML tags (e.g. tables from comparisons)
                 const hasHtml = /<\/?(?:table|tr|td|th|ul|ol|li)\b/i.test(streamedContent);
                 if (event.session_id) {
-                  setActiveSessionId(event.session_id);
-                }
-                // Debug checkout data
-                if (event.checkout_data) {
-                  console.log("[useChat] checkout_data received:", event.checkout_data);
-                }
-                if (event.continue_url) {
-                  console.log("[useChat] continue_url received:", event.continue_url);
+                  syncSession(event.session_id);
                 }
                 setMessages((prev) =>
                   prev.map((m) =>
@@ -330,10 +358,12 @@ export function useChat(
                           id: event.message_id || botId,
                           content: streamedContent,
                           answerHtml: hasHtml && event.answer_html ? event.answer_html : undefined,
-                          citedProducts: event.cited_products,
+                          citedProducts: filterValidProducts(event.cited_products),
                           suggestions: event.suggestions,
                           continueUrl: event.continue_url || undefined,
                           checkoutData: event.checkout_data || undefined,
+                          cartData: (event.cart_data as CartData) || undefined,
+                          orderHistoryData: (event.order_history_data as OrderHistoryData) || undefined,
                           streamDone: true,
                         }
                       : m
@@ -375,7 +405,7 @@ export function useChat(
         setLoading(false);
       }
     },
-    [sessionEnded, customerId, activeSessionId, scrollToBottom, setLoading]
+    [sessionEnded, customerId, activeSessionId, scrollToBottom, setLoading, syncSession]
   );
 
   // Shared streaming helper for product/compare messages
@@ -390,13 +420,20 @@ export function useChat(
         timestamp: new Date(),
       };
 
-      setMessages((prev) => [...prev, userMessage]);
+      const botId = generateId();
+      const botPlaceholder: ChatMessageUI = {
+        id: botId,
+        role: "bot",
+        content: "",
+        timestamp: new Date(),
+      };
+
+      // Add both user message and bot placeholder in a single state update
+      // to guarantee user message always appears above bot response
+      setMessages((prev) => [...prev, userMessage, botPlaceholder]);
       setLoading(true);
       setError(null);
       scrollToBottom();
-
-      const botId = generateId();
-      setMessages((prev) => [...prev, { id: botId, role: "bot", content: "", timestamp: new Date() }]);
 
       const body: ChatRequest = {
         message: apiMessage,
@@ -434,16 +471,18 @@ export function useChat(
                   const event = JSON.parse(line.slice(6).trim());
                   if (event.type === "done") {
                     const hasHtml = /<\/?(?:table|tr|td|th|ul|ol|li)\b/i.test(streamedContent);
-                    if (event.session_id) setActiveSessionId(event.session_id);
+                    if (event.session_id) syncSession(event.session_id);
                     setMessages((prev) =>
                       prev.map((m) =>
                         m.id === botId
                           ? {
                               ...m, id: event.message_id || botId, content: streamedContent,
                               answerHtml: hasHtml && event.answer_html ? event.answer_html : undefined,
-                              citedProducts: event.cited_products, suggestions: event.suggestions,
+                              citedProducts: filterValidProducts(event.cited_products), suggestions: event.suggestions,
                               continueUrl: event.continue_url || undefined,
                               checkoutData: event.checkout_data || undefined,
+                              cartData: (event.cart_data as CartData) || undefined,
+                              orderHistoryData: (event.order_history_data as OrderHistoryData) || undefined,
                               streamDone: true,
                             }
                           : m
@@ -471,7 +510,7 @@ export function useChat(
                 scrollToBottom();
               } else if (event.type === "done") {
                 const hasHtml = /<\/?(?:table|tr|td|th|ul|ol|li)\b/i.test(streamedContent);
-                if (event.session_id) setActiveSessionId(event.session_id);
+                if (event.session_id) syncSession(event.session_id);
                 setMessages((prev) =>
                   prev.map((m) =>
                     m.id === botId
@@ -480,10 +519,12 @@ export function useChat(
                           id: event.message_id || botId,
                           content: streamedContent,
                           answerHtml: hasHtml && event.answer_html ? event.answer_html : undefined,
-                          citedProducts: event.cited_products,
+                          citedProducts: filterValidProducts(event.cited_products),
                           suggestions: event.suggestions,
                           continueUrl: event.continue_url || undefined,
                           checkoutData: event.checkout_data || undefined,
+                          cartData: (event.cart_data as CartData) || undefined,
+                          orderHistoryData: (event.order_history_data as OrderHistoryData) || undefined,
                           streamDone: true,
                         }
                       : m
@@ -522,7 +563,7 @@ export function useChat(
         setLoading(false);
       }
     },
-    [sessionEnded, customerId, activeSessionId, scrollToBottom, setLoading]
+    [sessionEnded, customerId, activeSessionId, scrollToBottom, setLoading, syncSession]
   );
 
   const sendProductMessage = useCallback(
@@ -542,11 +583,28 @@ export function useChat(
     [streamRequest]
   );
 
+  const addOrderConfirmation = useCallback(
+    (order: OrderConfirmation) => {
+      const botMessage: ChatMessageUI = {
+        id: generateId(),
+        role: "bot",
+        content: "Your order has been confirmed! Here are the details:",
+        timestamp: new Date(),
+        orderConfirmation: order,
+        streamDone: true,
+      };
+      setMessages((prev) => [...prev, botMessage]);
+      setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+    },
+    []
+  );
+
   return {
     messages,
     sendMessage,
     sendProductMessage,
     sendCompareMessage,
+    addOrderConfirmation,
     isLoading,
     isTyping,
     isHistoryLoading,

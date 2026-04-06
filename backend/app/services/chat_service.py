@@ -93,7 +93,9 @@ _COMMERCE_INTENT_MAP: list[tuple[list[str], str]] = [
       "confirm my purchase", "confirm purchase", "confirm the purchase",
       "confirm my order", "confirm order",
       "finalize", "finalise", "make the purchase",
-      "pay for this", "payment for the", "i want to pay for"], "checkout_initiate"),
+      "pay for this", "payment for the", "i want to pay for",
+      "i want to buy now", "i'd like to buy now", "buy it now", "purchase it now",
+      "order it now", "buy sneakers now", "buy shoes now"], "checkout_initiate"),
     (["add to cart", "add to my cart", "put in cart", "put it in", "add it", "add this",
       "i want to add", "add the"], "add_to_cart"),
     (["remove from cart", "take out of cart", "delete from cart", "remove it", "take it out"], "remove_from_cart"),
@@ -151,6 +153,10 @@ _BROWSE_CATEGORY_WORDS = {
 def _is_specific_product_reference(msg: str, phrase: str) -> bool:
     """Check if text after the purchase phrase references a specific product (not a category)."""
     after = msg[msg.index(phrase) + len(phrase):].strip()
+    # Strip trailing filler words like "now", "please", "today"
+    for filler in (" now", " please", " today", " asap"):
+        if after.endswith(filler):
+            after = after[: -len(filler)].strip()
     if not after:
         return False
     # "i want to buy the adidas..." → specific product
@@ -160,8 +166,8 @@ def _is_specific_product_reference(msg: str, phrase: str) -> bool:
     first_word = after.split()[0].rstrip(".,!?") if after.split() else ""
     if first_word in _BROWSE_CATEGORY_WORDS:
         return False
-    # If there are 3+ words after the phrase, likely a specific product name
-    if len(after.split()) >= 3:
+    # If there are 2+ words after the phrase (after stripping fillers), likely a specific product name
+    if len(after.split()) >= 2:
         return True
     return False
 
@@ -297,6 +303,7 @@ class ChatService:
                 session=session,
                 request=request,
                 slots=slots,
+                customer_profile=customer_profile,
                 t_start=t_start,
             )
             if commerce_response is not None:
@@ -314,11 +321,11 @@ class ChatService:
         )
         skill_result = self._skills.resolve(skill_ctx)
 
-        # ── 9. LLM tool decision (skill prompts injected) ─────────────────
+        # ── 9. LLM tool decision (skill prompts + slot status injected) ───
+        slot_status = self._build_slot_status(slots)
+        tool_system_prompt = TOOL_SELECTION_PROMPT + "\n\n" + slot_status
         if skill_result.prompt_addon:
-            tool_system_prompt = TOOL_SELECTION_PROMPT + "\n\n" + skill_result.prompt_addon
-        else:
-            tool_system_prompt = TOOL_SELECTION_PROMPT
+            tool_system_prompt += "\n\n" + skill_result.prompt_addon
         active_tools = TOOL_DEFINITIONS + skill_result.extra_tools
 
         # Token-budget-aware history trimming:
@@ -344,6 +351,7 @@ class ChatService:
                 user_message=request.message,
                 history=llm_history,
                 tools=active_tools,
+                image_base64=getattr(request, "image_base64", None),
             )
         except LLMError:
             return await self._error_response(session, request, t_start)
@@ -384,6 +392,7 @@ class ChatService:
                 history=llm_history,
                 tool_result_summary=tool_result.summary,
                 tool_name=tool_name,
+                image_base64=getattr(request, "image_base64", None),
             )
         except LLMError:
             return await self._error_response(session, request, t_start)
@@ -545,8 +554,9 @@ class ChatService:
             async for event in _stream_words(q):
                 yield event
             await self._persist_shortcut(session, request, q, intent, t_start)
+            suggestions = await self._generate_suggestions_only(request.message, q)
             yield _sse({"type": "done", "message_id": "", "answer_html": q,
-                        "cited_products": [], "suggestions": self._rule_based_suggestions(intent, tool_name, slots)})
+                        "cited_products": [], "suggestions": suggestions})
             return
 
         if tool_name == "direct_answer":
@@ -554,8 +564,9 @@ class ChatService:
             async for event in _stream_words(a):
                 yield event
             await self._persist_shortcut(session, request, a, intent, t_start)
+            suggestions = await self._generate_suggestions_only(request.message, a)
             yield _sse({"type": "done", "message_id": "", "answer_html": a,
-                        "cited_products": [], "suggestions": self._rule_based_suggestions(intent, tool_name, slots)})
+                        "cited_products": [], "suggestions": suggestions})
             return
 
         # ── Execute tool + build prompt ──────────────────────────────────
@@ -595,6 +606,7 @@ class ChatService:
                 history=llm_history,
                 tool_result_summary=tool_result.summary,
                 tool_name=tool_name,
+                image_base64=getattr(request, "image_base64", None),
             ):
                 full_text += token
                 yield _sse({"type": "token", "content": token})
@@ -711,6 +723,7 @@ class ChatService:
                 session=session,
                 request=request,
                 slots=slots,
+                customer_profile=customer_profile,
                 t_start=t_start,
             )
             if commerce_response is not None:
@@ -723,6 +736,7 @@ class ChatService:
                 done_event: dict = {
                     "type": "done",
                     "message_id": str(commerce_response.message_id) if commerce_response.message_id else "",
+                    "session_id": str(session.session_id),
                     "answer_html": answer,
                     "cited_products": cited,
                     "suggestions": suggestions,
@@ -731,6 +745,10 @@ class ChatService:
                     done_event["continue_url"] = commerce_response.continue_url
                 if commerce_response.checkout_data:
                     done_event["checkout_data"] = commerce_response.checkout_data
+                if commerce_response.cart_data:
+                    done_event["cart_data"] = commerce_response.cart_data
+                if commerce_response.order_history_data:
+                    done_event["order_history_data"] = commerce_response.order_history_data
                 events.append(_sse(done_event))
                 return {"early_return": True, "events": events}
 
@@ -742,8 +760,10 @@ class ChatService:
         )
         skill_result = self._skills.resolve(skill_ctx)
 
-        tool_system_prompt = (TOOL_SELECTION_PROMPT + "\n\n" + skill_result.prompt_addon
-                              if skill_result.prompt_addon else TOOL_SELECTION_PROMPT)
+        slot_status = self._build_slot_status(slots)
+        tool_system_prompt = TOOL_SELECTION_PROMPT + "\n\n" + slot_status
+        if skill_result.prompt_addon:
+            tool_system_prompt += "\n\n" + skill_result.prompt_addon
         active_tools = TOOL_DEFINITIONS + skill_result.extra_tools
 
         candidates = conversation.recent_turns[-6:]
@@ -762,6 +782,7 @@ class ChatService:
             user_message=request.message,
             history=llm_history,
             tools=active_tools,
+            image_base64=getattr(request, "image_base64", None),
         )
 
         return {
@@ -1047,6 +1068,63 @@ class ChatService:
 
         return slots
 
+    def _build_slot_status(self, slots: SlotState) -> str:
+        """
+        Build a human-readable summary of collected slots for the LLM.
+        Tells the LLM what's been gathered and whether it's enough to search.
+        """
+        br = business_rules()
+        unlimited = br["budget"]["unlimited_sentinel"]
+
+        cat = slots.category or slots.use_case or "not yet asked"
+        brand = slots.brand if slots.brand and slots.brand.lower() != "any" else (
+            "no preference" if slots.brand and slots.brand.lower() == "any" else "not yet asked"
+        )
+        budget = (
+            f"under ${int(slots.budget)}" if slots.budget and slots.budget < unlimited
+            else ("no limit" if slots.budget else "not yet asked")
+        )
+        color = slots.color or "not yet asked"
+        size = slots.size or "not yet asked"
+
+        has_type = bool(slots.category or slots.use_case)
+        has_brand = bool(slots.brand)
+        has_budget = bool(slots.budget)
+        has_size = bool(slots.size)
+        has_color = bool(slots.color)
+        filled_count = sum([has_brand, has_budget, has_size, has_color])
+        ready = has_type and filled_count >= 1
+
+        lines = [
+            "CUSTOMER PREFERENCES COLLECTED:",
+            f"- Type: {cat}",
+            f"- Brand: {brand}",
+            f"- Budget: {budget}",
+            f"- Color: {color}",
+            f"- Size: {size}",
+        ]
+
+        if ready:
+            reasons = []
+            if has_type:
+                reasons.append("type")
+            if has_brand:
+                reasons.append("brand")
+            if has_budget:
+                reasons.append("budget")
+            if has_size:
+                reasons.append("size")
+            if has_color:
+                reasons.append("color")
+            lines.append(f"→ READY TO SEARCH. You have {' + '.join(reasons)}. Call search_products NOW. Do NOT ask any more questions.")
+        else:
+            if not has_type:
+                lines.append("→ Not enough info yet. Ask what TYPE of shoes they want.")
+            else:
+                lines.append("→ Have type only. Ask about their BRAND preference or BUDGET range next. Do NOT search yet.")
+
+        return "\n".join(lines)
+
     def _enrich_tool_args(
         self,
         tool_name: str,
@@ -1111,7 +1189,8 @@ class ChatService:
         session: Session,
         request: ChatRequest,
         slots: SlotState,
-        t_start: float,
+        customer_profile: dict | None = None,
+        t_start: float = 0.0,
     ) -> ChatResponse | None:
         """
         Route a commerce intent through feature flags → slot validation → CommerceClient.
@@ -1166,6 +1245,7 @@ class ChatService:
                 slots=commerce_slots,
                 customer_id=customer_id_str or "",
                 request_id=str(session.session_id),
+                session=session,
             )
         except Exception as exc:
             logger.warning(
@@ -1176,14 +1256,13 @@ class ChatService:
             return await self._error_response(session, request, t_start)
 
         # ── Format response ───────────────────────────────────────────────
-        answer = self._format_commerce_response(commerce_intent, service_response)
+        answer = self._format_commerce_response(commerce_intent, service_response, customer_profile)
         response = await self._direct_response(session, request, answer, commerce_intent, t_start)
 
         # Attach checkout metadata for the frontend
         if service_response.requires_escalation and service_response.continue_url:
             response.continue_url = service_response.continue_url
         if service_response.data:
-            checkout_data = {}
             line_items = (
                 service_response.data.get("lineItemsSnapshot")
                 or service_response.data.get("line_items_snapshot", [])
@@ -1192,15 +1271,52 @@ class ChatService:
                 service_response.data.get("totalsSnapshot")
                 or service_response.data.get("totals_snapshot", {})
             )
+            # Normalize totals to snake_case for frontend
+            if totals and isinstance(totals, dict):
+                totals = {
+                    "subtotal_cents": totals.get("subtotal_cents") or totals.get("subtotalCents", 0),
+                    "tax_cents": totals.get("tax_cents") or totals.get("taxCents", 0),
+                    "grand_total_cents": totals.get("grand_total_cents") or totals.get("grandTotalCents", 0),
+                }
             session_id = (
                 service_response.data.get("sessionId")
                 or service_response.data.get("session_id", "")
             )
-            if line_items or totals:
-                checkout_data["line_items"] = line_items
-                checkout_data["totals"] = totals
-                checkout_data["checkout_session_id"] = session_id
-                response.checkout_data = checkout_data
+
+            if commerce_intent == "view_cart":
+                # Attach cart_data for view_cart intent (renders CartPanel in frontend)
+                if (
+                    service_response.success
+                    and service_response.data.get("message") != "empty_cart"
+                    and (line_items or totals)
+                ):
+                    cart_data: dict = {
+                        "line_items": line_items,
+                        "totals": totals,
+                        "checkout_session_id": session_id,
+                    }
+                    response.cart_data = cart_data
+            else:
+                checkout_data: dict = {}
+                if line_items or totals:
+                    checkout_data["line_items"] = line_items
+                    checkout_data["totals"] = totals
+                    checkout_data["checkout_session_id"] = session_id
+
+                    # Attach saved addresses from customer profile
+                    if customer_profile:
+                        saved_addresses = customer_profile.get("addresses", [])
+                        if saved_addresses:
+                            checkout_data["saved_addresses"] = saved_addresses
+
+                    response.checkout_data = checkout_data
+
+        # Attach order_history_data for order_history intent
+        if commerce_intent == "order_history" and service_response.success:
+            response.order_history_data = {
+                "orders": service_response.data.get("orders", []) if service_response.data else [],
+                "next_cursor": service_response.data.get("nextCursor") if service_response.data else None,
+            }
 
         return response
 
@@ -1298,7 +1414,7 @@ class ChatService:
                     "item": {
                         "id": slots["product_id"],
                         "title": slots.get("_resolved_product_name", slots["product_id"]),
-                        "price": slots.get("_resolved_product_price_paise", 0),
+                        "price": max(1, slots.get("_resolved_product_price_paise", 0)),
                     },
                     "quantity": slots.get("quantity", 1),
                 }]
@@ -1316,6 +1432,7 @@ class ChatService:
         slots: dict,
         customer_id: str,
         request_id: str,
+        session: "Session | None" = None,
     ):
         """Route a validated commerce intent to the CommerceClient."""
         from app.clients.commerce_client import CommerceResponse
@@ -1325,15 +1442,47 @@ class ChatService:
                 "item": {
                     "id": slots["product_id"],
                     "title": slots.get("_resolved_product_name", slots["product_id"]),
-                    "price": slots.get("_resolved_product_price_paise", 0),
+                    "price": max(1, slots.get("_resolved_product_price_paise", 0)),
                 },
                 "quantity": slots.get("quantity", 1),
             }
-            return await self._commerce.create_checkout_session(
-                customer_id=customer_id,
-                line_items=[line_item],
-                request_id=request_id,
+            checkout_session_id = (
+                session.context.get("cart", {}).get("checkout_session_id")
+                if session is not None
+                else None
             )
+            if checkout_session_id:
+                # Verify the existing session isn't already completed/canceled before reusing
+                existing = await self._commerce.get_checkout_session(
+                    session_id=checkout_session_id,
+                    request_id=request_id,
+                )
+                existing_status = (
+                    existing.data.get("ucpStatus") or existing.data.get("ucp_status", "")
+                ) if existing.success and existing.data else ""
+                if existing_status in ("completed", "canceled", "COMPLETED", "CANCELED"):
+                    # Old session is done — clear it and create a new one
+                    if session is not None:
+                        session.context.get("cart", {}).pop("checkout_session_id", None)
+                    checkout_session_id = None
+
+            if checkout_session_id:
+                return await self._commerce.update_checkout_session(
+                    session_id=checkout_session_id,
+                    line_items=[line_item],
+                    request_id=request_id,
+                )
+            else:
+                result = await self._commerce.create_checkout_session(
+                    customer_id=customer_id,
+                    line_items=[line_item],
+                    request_id=request_id,
+                )
+                if result.success and session is not None:
+                    session.context.setdefault("cart", {})["checkout_session_id"] = (
+                        result.data.get("sessionId") or result.data.get("session_id", "")
+                    )
+                return result
 
         elif intent == "remove_from_cart":
             # Update session with item removed — get current session first
@@ -1357,11 +1506,16 @@ class ChatService:
             return CommerceResponse(success=True, data={"message": "Cart is already empty."})
 
         elif intent == "view_cart":
-            # Return current cart state — use a placeholder session lookup
-            from app.clients.commerce_client import CommerceResponse
-            return CommerceResponse(
-                success=True,
-                data={"message": "view_cart", "customer_id": customer_id},
+            checkout_session_id = (
+                session.context.get("cart", {}).get("checkout_session_id")
+                if session is not None
+                else None
+            )
+            if not checkout_session_id:
+                return CommerceResponse(success=True, data={"message": "empty_cart"})
+            return await self._commerce.get_checkout_session(
+                session_id=checkout_session_id,
+                request_id=request_id,
             )
 
         elif intent == "checkout_initiate":
@@ -1408,7 +1562,9 @@ class ChatService:
                 error_message=f"Unknown commerce intent: {intent}",
             )
 
-    def _format_commerce_response(self, intent: str, response) -> str:
+    def _format_commerce_response(
+        self, intent: str, response, customer_profile: dict | None = None,
+    ) -> str:
         """
         Format a CommerceResponse into a natural language reply.
         When requires_escalation, format continue_url as a clickable markdown link.
@@ -1427,9 +1583,28 @@ class ChatService:
                 qty = li.get("quantity", 1)
                 items_desc.append(f"{title} x {qty}")
             items_summary = ", ".join(items_desc) if items_desc else "your selected items"
+
+            # Mention saved address if available
+            address_hint = ""
+            if customer_profile:
+                saved_addresses = customer_profile.get("addresses", [])
+                if saved_addresses:
+                    default_addr = next(
+                        (a for a in saved_addresses if a.get("is_default")),
+                        saved_addresses[0],
+                    )
+                    city = default_addr.get("city", "")
+                    label = default_addr.get("label", "")
+                    addr_desc = f"{label} ({city})" if label and city else city or label or "your saved address"
+                    address_hint = (
+                        f" I see you have a saved delivery address: {addr_desc}."
+                        " You can use it or enter a new one in the checkout."
+                    )
+
             return (
-                f"Great! I've prepared your checkout for {items_summary}. "
-                "Click the button below to complete your purchase with shipping and payment details."
+                f"Great! I've prepared your checkout for {items_summary}."
+                f"{address_hint} "
+                "Click the button below to complete your purchase."
             )
 
         if not response.success:

@@ -5,6 +5,7 @@ import {
   Put,
   Param,
   Body,
+  Query,
   Res,
   UsePipes,
   ValidationPipe,
@@ -31,7 +32,7 @@ function centsToDisplay(cents: number): string {
   return (cents / 100).toFixed(2);
 }
 
-@Controller('commerce/checkout/sessions')
+@Controller('commerce/checkout-sessions')
 @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
 export class CheckoutController {
   constructor(private readonly checkoutSessionService: CheckoutSessionService) {}
@@ -48,6 +49,12 @@ export class CheckoutController {
       dto.buyer,
       dto.context,
     );
+  }
+
+  /** GET /commerce/checkout-sessions?customerId=... — get active session for a customer */
+  @Get()
+  async getActiveSession(@Query('customerId') customerId: string): Promise<CheckoutSession | null> {
+    return this.checkoutSessionService.getActiveSessionForCustomer(customerId);
   }
 
   /** GET /commerce/checkout/sessions/:id — return local session state */
@@ -203,7 +210,7 @@ export class CheckoutController {
       btn.disabled = true;
       btn.textContent = 'Processing...';
       try {
-        const res = await fetch(BASE_URL + '/commerce/checkout/sessions/' + SESSION_ID + '/complete', {
+        const res = await fetch(BASE_URL + '/commerce/checkout-sessions/' + SESSION_ID + '/complete', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ payment_instrument: { type: 'card', last4: '4242' } }),

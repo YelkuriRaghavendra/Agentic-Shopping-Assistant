@@ -13,6 +13,7 @@ import React from "react";
 import { render, cleanup } from "@testing-library/react";
 import { describe, it, afterEach, expect } from "vitest";
 import * as fc from "fast-check";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { SessionSidebar } from "@/components/SessionSidebar";
 import type { SessionResponse } from "@/types/chat.types";
 
@@ -58,14 +59,17 @@ describe("Property 12: SessionSidebar renders one entry per session", () => {
     () => {
       fc.assert(
         fc.property(sessionsArb, (sessions) => {
+          const queryClient = new QueryClient();
           const { queryAllByTestId } = render(
-            <SessionSidebar
-              sessions={sessions}
-              activeSessionId={null}
-              isLoading={false}
-              onSelectSession={() => {}}
-              onNewSession={() => {}}
-            />
+            <QueryClientProvider client={queryClient}>
+              <SessionSidebar
+                sessions={sessions}
+                activeSessionId={null}
+                isLoading={false}
+                onSelectSession={() => {}}
+                onNewSession={() => {}}
+              />
+            </QueryClientProvider>
           );
 
           const entries = queryAllByTestId("session-entry");

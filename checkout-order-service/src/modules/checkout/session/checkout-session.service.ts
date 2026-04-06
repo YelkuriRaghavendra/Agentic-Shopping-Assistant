@@ -94,8 +94,8 @@ export class CheckoutSessionService {
 
     // In local dev, set continue_url using the real sessionId from DB
     if (skipUcp) {
-      const platformBase = process.env.PLATFORM_BASE_URL ?? 'http://localhost:3001';
-      session.continueUrl = `${platformBase}/commerce/checkout-sessions/${session.sessionId}/summary`;
+      const frontendBase = process.env.FRONTEND_URL ?? 'http://localhost:4001';
+      session.continueUrl = `${frontendBase}/chat`;
       await this.sessionRepo.save(session);
     } else {
       await this.reactToStatus(session, UcpCheckoutStatus.INCOMPLETE, ucpStatus, null);
@@ -186,6 +186,13 @@ export class CheckoutSessionService {
 
   async getSession(sessionId: string): Promise<CheckoutSession> {
     return this.loadSession(sessionId);
+  }
+
+  async getActiveSessionForCustomer(customerId: string): Promise<CheckoutSession | null> {
+    return this.sessionRepo.findOne({
+      where: { customerId },
+      order: { createdAt: 'DESC' },
+    }) ?? null;
   }
 
   async cancelSession(sessionId: string): Promise<CheckoutSession> {

@@ -10,6 +10,7 @@ export interface RequestConfig {
 export interface HttpClient {
   get<T>(url: string, config?: RequestConfig): Promise<T>;
   post<T>(url: string, body: unknown, config?: RequestConfig): Promise<T>;
+  patch<T>(url: string, body: unknown, config?: RequestConfig): Promise<T>;
 }
 
 export class HttpError extends Error {
@@ -35,6 +36,23 @@ export class FetchHttpClient implements HttpClient {
   async post<T>(url: string, body: unknown, config?: RequestConfig): Promise<T> {
     const res = await fetch(url, {
       method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...config?.headers,
+      },
+      body: JSON.stringify(body),
+      signal: config?.signal,
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new HttpError(res.status, text);
+    }
+    return res.json() as Promise<T>;
+  }
+
+  async patch<T>(url: string, body: unknown, config?: RequestConfig): Promise<T> {
+    const res = await fetch(url, {
+      method: "PATCH",
       headers: {
         "Content-Type": "application/json",
         ...config?.headers,

@@ -6,12 +6,13 @@ Includes auto-session logic: find active or create new.
 
 import uuid
 from datetime import datetime, timedelta, UTC
-from sqlalchemy import select, update
+from sqlalchemy import select, update, case
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.session import Session, SessionFeedback
 from app.db.models.message import Message
 from app.db.models.enums.session_enums import SessionStatus, ChannelType
+from app.db.models.enums.message_enums import MessageRole
 from app.db.repositories.base_repository import BaseRepository
 from app.core.config import get_settings
 
@@ -177,6 +178,12 @@ class SessionRepository(BaseRepository[Session]):
         )
         return result.scalar_one_or_none()
 
+    # Secondary sort: when timestamps are equal, user messages come before assistant
+    _role_sort = case(
+        (Message.role == MessageRole.USER, 0),
+        else_=1,
+    )
+
     async def get_history(
         self,
         session_id: uuid.UUID,
@@ -187,7 +194,7 @@ class SessionRepository(BaseRepository[Session]):
         query = (
             select(Message)
             .where(Message.session_id == session_id)
-            .order_by(Message.created_at.desc())
+            .order_by(Message.created_at.desc(), self._role_sort.desc())
             .limit(limit)
         )
         if before_id:

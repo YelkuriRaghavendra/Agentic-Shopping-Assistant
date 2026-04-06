@@ -1,21 +1,43 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import useCustomer from "@/hooks/useCustomer";
 import { useSessions } from "@/hooks/useSessions";
 import { useChat } from "@/hooks/useChat";
 import { ChatWindow } from "@/components/ChatWindow";
 import { SessionSidebar } from "@/components/SessionSidebar";
 import { UserDialog } from "@/components/UserDialog";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { theme } from "@/lib/theme";
+import Link from "next/link";
 
 export default function ChatPage() {
   const customer = useCustomer();
   const sessions = useSessions(customer.customerId);
   const chat = useChat(customer.customerId, sessions.activeSessionId);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const searchParams = useSearchParams();
+
+  // When Stripe redirects back with ?payment=success&session=..., notify the user
+  useEffect(() => {
+    const paymentStatus = searchParams.get("payment");
+    const sessionId = searchParams.get("session");
+    if (paymentStatus === "success" && sessionId) {
+      // Clean the URL without reloading
+      const url = new URL(window.location.href);
+      url.searchParams.delete("payment");
+      url.searchParams.delete("session");
+      window.history.replaceState({}, "", url.toString());
+      // Send a message to the chat confirming payment
+      chat.sendMessage(`My payment was completed. Session: ${sessionId}`);
+    }
+  // Only run on mount
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
+    <ErrorBoundary>
     <main className="flex h-screen w-full overflow-hidden" style={{ background: theme.bg.feed }}>
 
       {/* ── Mobile sidebar overlay ── */}
@@ -45,11 +67,11 @@ export default function ChatPage() {
         {/* Sidebar header */}
         <div className="flex items-center justify-between px-4 py-4"
           style={{ borderBottom: `0.5px solid ${theme.border.subtle}` }}>
-          <div className="flex items-center gap-1">
+          <Link href="/" className="flex items-center gap-1">
             <span className="font-josefin font-bold text-sm uppercase" style={{ color: theme.teal[600], letterSpacing: "3px" }}>Vik</span>
             <span className="font-josefin font-bold text-sm uppercase" style={{ color: "#fff", letterSpacing: "3px" }}>rai</span>
             <span className="ml-0.5 inline-block rounded-full animate-glow" style={{ width: 5, height: 5, background: theme.teal[600] }} />
-          </div>
+          </Link>
           {/* Close button — mobile only */}
           <button className="sm:hidden p-1" onClick={() => setSidebarOpen(false)} aria-label="Close sidebar">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: "rgba(255,255,255,0.4)" }}>
@@ -65,6 +87,8 @@ export default function ChatPage() {
             isLoading={sessions.isLoading}
             onSelectSession={(id) => { sessions.selectSession(id); setSidebarOpen(false); }}
             onNewSession={() => { sessions.createSession(customer.customerId); setSidebarOpen(false); }}
+            customerId={customer.customerId}
+            onLogout={() => { customer.logout(); setSidebarOpen(false); }}
           />
         </div>
       </aside>
@@ -97,6 +121,9 @@ export default function ChatPage() {
           sessionEnded={chat.sessionEnded}
           bottomRef={chat.bottomRef}
           isHistoryLoading={chat.isHistoryLoading}
+          customerId={customer.customerId}
+          updateProfile={customer.updateProfile}
+          addOrderConfirmation={chat.addOrderConfirmation}
         />
       </div>
 
@@ -106,5 +133,6 @@ export default function ChatPage() {
         error={customer.error}
       />
     </main>
+    </ErrorBoundary>
   );
 }

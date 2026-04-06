@@ -51,21 +51,26 @@ export function useSessions(customerId: string | null): UseSessionsReturn {
         ["sessions", customerId],
         (prev) => [newSession, ...(prev ?? [])]
       );
+      // Set active session and sync the URL so useChat picks up the new session
+      // immediately instead of racing with the polling interval
       setActiveSessionId(newSession.session_id);
+      const url = new URL(window.location.href);
+      url.searchParams.set("session", newSession.session_id);
+      window.history.replaceState({}, "", url.toString());
     },
     [customerId, queryClient]
   );
 
-  // Cross-tab sync: refetch sessions when another tab makes changes
+  // Listen for same-tab URL changes (e.g. from useChat syncing session_id)
   useEffect(() => {
-    const handler = (e: StorageEvent) => {
-      if (e.key === "session_updated") {
-        queryClient.invalidateQueries({ queryKey: ["sessions", customerId] });
+    const interval = setInterval(() => {
+      const urlSession = getSessionFromUrl();
+      if (urlSession && urlSession !== activeSessionId) {
+        setActiveSessionId(urlSession);
       }
-    };
-    window.addEventListener("storage", handler);
-    return () => window.removeEventListener("storage", handler);
-  }, [customerId, queryClient]);
+    }, 500);
+    return () => clearInterval(interval);
+  }, [activeSessionId]);
 
   return { sessions, activeSessionId, isLoading, selectSession, createSession };
 }
