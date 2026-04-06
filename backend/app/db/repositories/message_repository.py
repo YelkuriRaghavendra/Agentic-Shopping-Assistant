@@ -4,10 +4,11 @@ All message DB operations live here.
 """
 
 import uuid
-from sqlalchemy import select
+from sqlalchemy import select, case
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.message import Message
+from app.db.models.enums.message_enums import MessageRole
 from app.db.repositories.base_repository import BaseRepository
 
 
@@ -31,6 +32,12 @@ class MessageRepository(BaseRepository[Message]):
         )
         return await self.save(message)
 
+    # Secondary sort: when timestamps are equal, user messages come before assistant
+    _role_sort = case(
+        (Message.role == MessageRole.USER, 0),
+        else_=1,
+    )
+
     async def get_recent_turns(
         self,
         session_id: uuid.UUID,
@@ -43,7 +50,7 @@ class MessageRepository(BaseRepository[Message]):
         result = await self._db.execute(
             select(Message)
             .where(Message.session_id == session_id)
-            .order_by(Message.created_at.desc())
+            .order_by(Message.created_at.desc(), self._role_sort.desc())
             .limit(limit)
         )
         return list(reversed(result.scalars().all()))
@@ -61,7 +68,7 @@ class MessageRepository(BaseRepository[Message]):
         query = (
             select(Message)
             .where(Message.session_id == session_id)
-            .order_by(Message.created_at.desc())
+            .order_by(Message.created_at.desc(), self._role_sort.desc())
             .limit(limit)
         )
         if before_id:

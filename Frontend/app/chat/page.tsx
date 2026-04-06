@@ -9,6 +9,7 @@ import { SessionSidebar } from "@/components/SessionSidebar";
 import { UserDialog } from "@/components/UserDialog";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { theme } from "@/lib/theme";
+import Link from "next/link";
 
 export default function ChatPage() {
   const customer = useCustomer();
@@ -47,11 +48,11 @@ export default function ChatPage() {
         {/* Sidebar header */}
         <div className="flex items-center justify-between px-4 py-4"
           style={{ borderBottom: `0.5px solid ${theme.border.subtle}` }}>
-          <div className="flex items-center gap-1">
+          <Link href="/" className="flex items-center gap-1">
             <span className="font-josefin font-bold text-sm uppercase" style={{ color: theme.teal[600], letterSpacing: "3px" }}>Vik</span>
             <span className="font-josefin font-bold text-sm uppercase" style={{ color: "#fff", letterSpacing: "3px" }}>rai</span>
             <span className="ml-0.5 inline-block rounded-full animate-glow" style={{ width: 5, height: 5, background: theme.teal[600] }} />
-          </div>
+          </Link>
           {/* Close button — mobile only */}
           <button className="sm:hidden p-1" onClick={() => setSidebarOpen(false)} aria-label="Close sidebar">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ color: "rgba(255,255,255,0.4)" }}>

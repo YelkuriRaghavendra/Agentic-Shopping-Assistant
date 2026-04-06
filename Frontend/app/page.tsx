@@ -342,13 +342,18 @@ function Footer() {
       style={{ background: "#000", borderTop: "0.5px solid rgba(255,255,255,0.06)" }}>
       <Logo />
       <div className="flex flex-wrap justify-center items-center gap-4 sm:gap-6">
-        {["Privacy", "Terms", "Contact", "Careers"].map((item) => (
-          <a key={item} href="#"
+        {[
+          { label: "Privacy", href: "/privacy" },
+          { label: "Terms", href: "/terms" },
+          { label: "Contact", href: "mailto:hello@vikrai.ai" },
+          { label: "Careers", href: "mailto:careers@vikrai.ai" },
+        ].map((item) => (
+          <a key={item.label} href={item.href}
             className="font-mono text-[9px] uppercase tracking-widest transition-colors duration-200"
             style={{ color: "rgba(255,255,255,0.25)", letterSpacing: "1.5px" }}
             onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = theme.teal[600]; }}
             onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = "rgba(255,255,255,0.25)"; }}
-          >{item}</a>
+          >{item.label}</a>
         ))}
       </div>
       <p className="font-mono text-[9px] uppercase tracking-widest text-center" style={{ color: "rgba(255,255,255,0.2)", letterSpacing: "1.5px" }}>

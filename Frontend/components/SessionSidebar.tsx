@@ -45,7 +45,7 @@ function SessionTitle({ sessionId }: { sessionId: string }) {
   return (
     <span
       className="text-[10px] truncate block mt-0.5"
-      style={{ color: "rgba(255,255,255,0.35)", fontWeight: 300, maxWidth: "100%" }}
+      style={{ color: "rgba(255,255,255,0.55)", fontWeight: 300, maxWidth: "100%" }}
     >
       {title}
     </span>
@@ -130,7 +130,7 @@ export function SessionSidebar({
             >
               <span
                 className="font-mono text-[9px] uppercase tracking-wider truncate"
-                style={{ color: isActive ? "#5DCAA5" : "rgba(255,255,255,0.4)", letterSpacing: "1px" }}
+                style={{ color: isActive ? "#5DCAA5" : "rgba(255,255,255,0.6)", letterSpacing: "1px" }}
               >
                 {formatDate(session.started_at)}
               </span>
@@ -148,7 +148,7 @@ export function SessionSidebar({
                 {session.message_count > 0 && (
                   <span
                     className="font-mono text-[9px]"
-                    style={{ color: "rgba(255,255,255,0.2)" }}
+                    style={{ color: "rgba(255,255,255,0.4)" }}
                   >
                     {session.message_count} msg
                   </span>

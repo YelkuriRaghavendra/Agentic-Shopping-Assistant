@@ -95,7 +95,13 @@ export function useChat(
 
     const loaded: ChatMessageUI[] = historyData.messages
       .slice()
-      .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+      .sort((a, b) => {
+        const timeDiff = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+        if (timeDiff !== 0) return timeDiff;
+        // When timestamps are equal (same DB transaction), user messages come before bot
+        const roleOrder = (r: string) => (r.toLowerCase() === "user" ? 0 : 1);
+        return roleOrder(a.role) - roleOrder(b.role);
+      })
       .map((msg) => {
         const citedMeta = msg.cited_products?.[0] as Record<string, unknown> | undefined;
         const answerHtml =
@@ -232,7 +238,16 @@ export function useChat(
         timestamp: new Date(),
       };
 
-      setMessages((prev) => [...prev, userMessage]);
+      // Add both user message and bot placeholder in a single state update
+      // to guarantee user message always appears above bot response
+      const botId = generateId();
+      const botMessage: ChatMessageUI = {
+        id: botId,
+        role: "bot",
+        content: "",
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, userMessage, botMessage]);
       setLoading(true);
       setError(null);
       scrollToBottom();
@@ -243,16 +258,6 @@ export function useChat(
         ...(activeSessionId ? { session_id: activeSessionId } : {}),
         ...(imageBase64 ? { image_base64: imageBase64 } : {}),
       };
-
-      // Create a placeholder bot message for streaming
-      const botId = generateId();
-      const botMessage: ChatMessageUI = {
-        id: botId,
-        role: "bot",
-        content: "",
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, botMessage]);
 
       setIsTyping(true);
       try {
@@ -417,13 +422,20 @@ export function useChat(
         timestamp: new Date(),
       };
 
-      setMessages((prev) => [...prev, userMessage]);
+      const botId = generateId();
+      const botPlaceholder: ChatMessageUI = {
+        id: botId,
+        role: "bot",
+        content: "",
+        timestamp: new Date(),
+      };
+
+      // Add both user message and bot placeholder in a single state update
+      // to guarantee user message always appears above bot response
+      setMessages((prev) => [...prev, userMessage, botPlaceholder]);
       setLoading(true);
       setError(null);
       scrollToBottom();
-
-      const botId = generateId();
-      setMessages((prev) => [...prev, { id: botId, role: "bot", content: "", timestamp: new Date() }]);
 
       const body: ChatRequest = {
         message: apiMessage,
