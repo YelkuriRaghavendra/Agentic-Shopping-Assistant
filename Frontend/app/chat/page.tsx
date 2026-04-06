@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { Suspense, useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import useCustomer from "@/hooks/useCustomer";
 import { useSessions } from "@/hooks/useSessions";
@@ -13,6 +13,14 @@ import { theme } from "@/lib/theme";
 import Link from "next/link";
 
 export default function ChatPage() {
+  return (
+    <Suspense>
+      <ChatPageInner />
+    </Suspense>
+  );
+}
+
+function ChatPageInner() {
   const customer = useCustomer();
   const sessions = useSessions(customer.customerId);
   const chat = useChat(customer.customerId, sessions.activeSessionId);

@@ -16,6 +16,11 @@ import type {
   OrderHistoryData,
 } from "@/types/chat.types";
 
+/** Strip [P1], [P2] etc. citation markers from LLM text */
+function stripCitations(text: string): string {
+  return text.replace(/\[P\d+\]/g, "").replace(/ {2,}/g, " ").trim();
+}
+
 /** Filter out products with missing image or product ID */
 function filterValidProducts(products?: ProductCardDTO[]): ProductCardDTO[] | undefined {
   if (!products || products.length === 0) return products;
@@ -105,17 +110,35 @@ export function useChat(
         return roleOrder(a.role) - roleOrder(b.role);
       })
       .map((msg) => {
-        const citedMeta = msg.cited_products?.[0] as Record<string, unknown> | undefined;
-        const answerHtml =
-          typeof citedMeta?.answer_html === "string" && citedMeta.answer_html
-            ? citedMeta.answer_html
-            : undefined;
+        // Extract answer_html and product cards from cited_products metadata
+        const citedRaw = msg.cited_products ?? [];
+        let answerHtml: string | undefined;
+        const productCards: ProductCardDTO[] = [];
+
+        for (const item of citedRaw) {
+          if (typeof item.answer_html === "string" && item.answer_html) {
+            answerHtml = item.answer_html;
+          }
+          // If the item has product fields, treat it as a product card
+          if (item.productId && item.productName) {
+            productCards.push({
+              productId: item.productId as string,
+              productName: item.productName as string,
+              price: (item.price as number) ?? null,
+              rating: (item.rating as number) ?? null,
+              productImageUrl: (item.productImageUrl as string) ?? null,
+            });
+          }
+        }
+
+        const validProducts = filterValidProducts(productCards);
 
         return {
           id: msg.message_id,
           role: (msg.role.toLowerCase() === "user" ? "user" : "bot") as "user" | "bot",
           content: msg.content,
           ...(answerHtml ? { answerHtml } : {}),
+          ...(validProducts && validProducts.length > 0 ? { citedProducts: validProducts } : {}),
           timestamp: new Date(msg.created_at),
           streamDone: true,
         };
@@ -295,8 +318,7 @@ export function useChat(
                 try {
                   const event = JSON.parse(jsonStr);
                   if (event.type === "done") {
-                    const hasHtml = /<\/?(?:table|tr|td|th|ul|ol|li)\b/i.test(streamedContent);
-                    if (event.session_id) syncSession(event.session_id);
+                        if (event.session_id) syncSession(event.session_id);
                     setMessages((prev) =>
                       prev.map((m) =>
                         m.id === botId
@@ -304,7 +326,7 @@ export function useChat(
                               ...m,
                               id: event.message_id || botId,
                               content: streamedContent,
-                              answerHtml: hasHtml && event.answer_html ? event.answer_html : undefined,
+                              answerHtml: event.answer_html || undefined,
                               citedProducts: filterValidProducts(event.cited_products),
                               suggestions: event.suggestions,
                               continueUrl: event.continue_url || undefined,
@@ -346,7 +368,6 @@ export function useChat(
               } else if (event.type === "done") {
                 // Final event — add products/suggestions
                 // Use answer_html if content has HTML tags (e.g. tables from comparisons)
-                const hasHtml = /<\/?(?:table|tr|td|th|ul|ol|li)\b/i.test(streamedContent);
                 if (event.session_id) {
                   syncSession(event.session_id);
                 }
@@ -356,8 +377,8 @@ export function useChat(
                       ? {
                           ...m,
                           id: event.message_id || botId,
-                          content: streamedContent,
-                          answerHtml: hasHtml && event.answer_html ? event.answer_html : undefined,
+                          content: stripCitations(streamedContent),
+                          answerHtml: event.answer_html || undefined,
                           citedProducts: filterValidProducts(event.cited_products),
                           suggestions: event.suggestions,
                           continueUrl: event.continue_url || undefined,
@@ -470,14 +491,13 @@ export function useChat(
                 try {
                   const event = JSON.parse(line.slice(6).trim());
                   if (event.type === "done") {
-                    const hasHtml = /<\/?(?:table|tr|td|th|ul|ol|li)\b/i.test(streamedContent);
-                    if (event.session_id) syncSession(event.session_id);
+                        if (event.session_id) syncSession(event.session_id);
                     setMessages((prev) =>
                       prev.map((m) =>
                         m.id === botId
                           ? {
                               ...m, id: event.message_id || botId, content: streamedContent,
-                              answerHtml: hasHtml && event.answer_html ? event.answer_html : undefined,
+                              answerHtml: event.answer_html || undefined,
                               citedProducts: filterValidProducts(event.cited_products), suggestions: event.suggestions,
                               continueUrl: event.continue_url || undefined,
                               checkoutData: event.checkout_data || undefined,
@@ -509,7 +529,6 @@ export function useChat(
                 );
                 scrollToBottom();
               } else if (event.type === "done") {
-                const hasHtml = /<\/?(?:table|tr|td|th|ul|ol|li)\b/i.test(streamedContent);
                 if (event.session_id) syncSession(event.session_id);
                 setMessages((prev) =>
                   prev.map((m) =>
@@ -517,8 +536,8 @@ export function useChat(
                       ? {
                           ...m,
                           id: event.message_id || botId,
-                          content: streamedContent,
-                          answerHtml: hasHtml && event.answer_html ? event.answer_html : undefined,
+                          content: stripCitations(streamedContent),
+                          answerHtml: event.answer_html || undefined,
                           citedProducts: filterValidProducts(event.cited_products),
                           suggestions: event.suggestions,
                           continueUrl: event.continue_url || undefined,

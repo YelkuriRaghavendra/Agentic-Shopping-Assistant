@@ -130,7 +130,7 @@ export const MessageBubble = memo(function MessageBubble({ message, onSelectProd
         )}
 
         {/* Suggestion chips */}
-        {!isUser && message.suggestions && message.suggestions.length > 0 && onSelectSuggestion && (
+        {!isUser && !message.checkoutData && message.suggestions && message.suggestions.length > 0 && onSelectSuggestion && (
           <SuggestionChips suggestions={message.suggestions} onSelectSuggestion={onSelectSuggestion} />
         )}
 
