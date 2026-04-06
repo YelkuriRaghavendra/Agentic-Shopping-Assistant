@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { AnimatePresence } from "framer-motion";
 import { MessageBubble } from "./MessageBubble";
 import { ChatInput } from "./ChatInput";
@@ -8,6 +8,7 @@ import { TypingIndicator } from "./TypingIndicator";
 import { CheckoutModal } from "./CheckoutModal";
 import { CartPanel } from "./CartPanel";
 import { OrderHistoryPanel } from "./OrderHistoryPanel";
+import { endpoints } from "@/config/config";
 import type {
   ChatMessageUI,
   ProductCardDTO,
@@ -15,6 +16,7 @@ import type {
   CartData,
   OrderHistoryData,
   OrderConfirmation,
+  CheckoutLineItem,
 } from "@/types/chat.types";
 
 import type React from "react";
@@ -95,6 +97,53 @@ export function ChatWindow({
   // Track last processed message index to avoid re-processing on re-renders
   const lastProcessedRef = useRef<string | null>(null);
 
+  // Fetch active cart for this customer from checkout-order-service
+  const fetchCart = useCallback(async () => {
+    if (!customerId) return;
+    try {
+      const res = await fetch(endpoints.activeCart(customerId));
+      if (!res.ok) return;
+      const session = await res.json();
+      if (!session) return;
+      const lineItems: CheckoutLineItem[] = (session.lineItemsSnapshot ?? []).map((li: any) => ({
+        item: { id: li.item?.id ?? "", title: li.item?.title ?? "", price: li.item?.price ?? 0 },
+        quantity: li.quantity ?? 1,
+      }));
+      const totals = session.totalsSnapshot ?? { subtotal_cents: 0, tax_cents: 0, grand_total_cents: 0 };
+      if (lineItems.length > 0) {
+        setCartData({
+          line_items: lineItems,
+          totals: {
+            subtotal_cents: totals.subtotal_cents ?? totals.subtotalCents ?? 0,
+            tax_cents: totals.tax_cents ?? totals.taxCents ?? 0,
+            grand_total_cents: totals.grand_total_cents ?? totals.grandTotalCents ?? 0,
+          },
+          checkout_session_id: session.sessionId,
+        });
+      }
+    } catch { /* silently ignore */ }
+  }, [customerId]);
+
+  // Fetch order history for this customer from checkout-order-service
+  const fetchOrders = useCallback(async () => {
+    if (!customerId) return;
+    try {
+      const res = await fetch(endpoints.orderHistory(customerId));
+      if (!res.ok) return;
+      const body = await res.json();
+      const orders = (body.data ?? body.orders ?? body ?? []).map((o: any) => ({
+        order_id: o.orderId ?? o.order_id ?? "",
+        ucp_order_id: o.ucpOrderId ?? o.ucp_order_id,
+        status: o.status ?? "processing",
+        totals: {
+          grand_total_cents: o.totals?.grandTotalCents ?? o.totals?.grand_total_cents ?? 0,
+        },
+        created_at: o.createdAt ?? o.created_at ?? new Date().toISOString(),
+      }));
+      setOrderHistoryData({ orders, next_cursor: body.nextCursor ?? null });
+    } catch { /* silently ignore */ }
+  }, [customerId]);
+
   // Task 8.4: auto-open drawers when SSE data arrives
   useEffect(() => {
     if (messages.length === 0) return;
@@ -118,7 +167,12 @@ export function ChatWindow({
 
   const handleCheckout = (message: ChatMessageUI) => {
     if (message.checkoutData) {
-      setCheckoutData(message.checkoutData);
+      // Always use the most recent checkoutData to avoid reusing a completed session
+      const latestCheckoutMsg = [...messages].reverse().find(
+        (m) => m.role === "bot" && m.checkoutData
+      );
+      const data = latestCheckoutMsg?.checkoutData ?? message.checkoutData;
+      setCheckoutData(data);
       setCheckoutOpen(true);
     }
   };
@@ -130,7 +184,7 @@ export function ChatWindow({
     count > 0 ? "#1D9E75" : "rgba(255,255,255,0.5)";
 
   return (
-    <div className="flex h-full w-full flex-col" style={{ background: "#080809" }}>
+    <div className="flex h-full w-full flex-col" style={{ background: "#080809", position: "relative" }}>
       {/* Header */}
       <div
         className="flex items-center gap-3 px-6 py-4 shrink-0"
@@ -180,7 +234,10 @@ export function ChatWindow({
         <div className="flex items-center gap-2 ml-auto">
           {/* Cart icon */}
           <button
-            onClick={() => setCartOpen((o) => !o)}
+            onClick={() => {
+              if (!cartData) fetchCart();
+              setCartOpen((o) => !o);
+            }}
             aria-label="Toggle cart"
             style={{
               position: "relative",
@@ -222,7 +279,10 @@ export function ChatWindow({
 
           {/* Orders icon */}
           <button
-            onClick={() => setOrdersOpen((o) => !o)}
+            onClick={() => {
+              if (!orderHistoryData) fetchOrders();
+              setOrdersOpen((o) => !o);
+            }}
             aria-label="Toggle order history"
             style={{
               position: "relative",
@@ -264,8 +324,8 @@ export function ChatWindow({
         </div>
       </div>
 
-      {/* Chat body — position:relative so drawers can be absolutely positioned */}
-      <div className="flex-1 flex flex-col overflow-hidden" style={{ position: "relative" }}>
+      {/* Chat body */}
+      <div className="flex-1 flex flex-col overflow-hidden">
         {/* Messages area */}
         <div className="flex-1 overflow-y-auto py-4" suppressHydrationWarning>
           {isHistoryLoading ? (
@@ -455,6 +515,95 @@ export function ChatWindow({
           }}
         />
       )}
+
+      {/* CartDrawer — slides in from right, overlays full chat height */}
+      <div
+        aria-label="Cart drawer"
+        style={{
+          position: "absolute",
+          top: 0,
+          right: 0,
+          height: "100%",
+          width: "320px",
+          background: "#0C0C0F",
+          borderLeft: "0.5px solid rgba(255,255,255,0.08)",
+          transform: cartOpen ? "translateX(0)" : "translateX(100%)",
+          transition: "transform 0.3s ease",
+          zIndex: 30,
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        <button
+          onClick={() => setCartOpen(false)}
+          aria-label="Close cart"
+          style={{
+            position: "absolute",
+            top: "12px",
+            right: "12px",
+            background: "transparent",
+            border: "none",
+            color: "rgba(255,255,255,0.4)",
+            fontSize: "18px",
+            cursor: "pointer",
+            lineHeight: 1,
+            zIndex: 1,
+          }}
+        >
+          &times;
+        </button>
+        {cartData && (
+          <CartPanel
+            cartData={cartData}
+            onCheckout={() => {
+              setCartOpen(false);
+              setCheckoutData(cartData as CheckoutData);
+              setCheckoutOpen(true);
+            }}
+          />
+        )}
+      </div>
+
+      {/* OrdersDrawer — slides in from right, overlays full chat height */}
+      <div
+        aria-label="Orders drawer"
+        style={{
+          position: "absolute",
+          top: 0,
+          right: 0,
+          height: "100%",
+          width: "320px",
+          background: "#0C0C0F",
+          borderLeft: "0.5px solid rgba(255,255,255,0.08)",
+          transform: ordersOpen ? "translateX(0)" : "translateX(100%)",
+          transition: "transform 0.3s ease",
+          zIndex: 30,
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        <button
+          onClick={() => setOrdersOpen(false)}
+          aria-label="Close orders"
+          style={{
+            position: "absolute",
+            top: "12px",
+            right: "12px",
+            background: "transparent",
+            border: "none",
+            color: "rgba(255,255,255,0.4)",
+            fontSize: "18px",
+            cursor: "pointer",
+            lineHeight: 1,
+            zIndex: 1,
+          }}
+        >
+          &times;
+        </button>
+        {orderHistoryData && (
+          <OrderHistoryPanel data={orderHistoryData} />
+        )}
+      </div>
     </div>
   );
 }

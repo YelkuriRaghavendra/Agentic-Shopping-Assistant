@@ -736,6 +736,7 @@ class ChatService:
                 done_event: dict = {
                     "type": "done",
                     "message_id": str(commerce_response.message_id) if commerce_response.message_id else "",
+                    "session_id": str(session.session_id),
                     "answer_html": answer,
                     "cited_products": cited,
                     "suggestions": suggestions,
@@ -1270,6 +1271,13 @@ class ChatService:
                 service_response.data.get("totalsSnapshot")
                 or service_response.data.get("totals_snapshot", {})
             )
+            # Normalize totals to snake_case for frontend
+            if totals and isinstance(totals, dict):
+                totals = {
+                    "subtotal_cents": totals.get("subtotal_cents") or totals.get("subtotalCents", 0),
+                    "tax_cents": totals.get("tax_cents") or totals.get("taxCents", 0),
+                    "grand_total_cents": totals.get("grand_total_cents") or totals.get("grandTotalCents", 0),
+                }
             session_id = (
                 service_response.data.get("sessionId")
                 or service_response.data.get("session_id", "")
@@ -1443,6 +1451,21 @@ class ChatService:
                 if session is not None
                 else None
             )
+            if checkout_session_id:
+                # Verify the existing session isn't already completed/canceled before reusing
+                existing = await self._commerce.get_checkout_session(
+                    session_id=checkout_session_id,
+                    request_id=request_id,
+                )
+                existing_status = (
+                    existing.data.get("ucpStatus") or existing.data.get("ucp_status", "")
+                ) if existing.success and existing.data else ""
+                if existing_status in ("completed", "canceled", "COMPLETED", "CANCELED"):
+                    # Old session is done — clear it and create a new one
+                    if session is not None:
+                        session.context.get("cart", {}).pop("checkout_session_id", None)
+                    checkout_session_id = None
+
             if checkout_session_id:
                 return await self._commerce.update_checkout_session(
                     session_id=checkout_session_id,

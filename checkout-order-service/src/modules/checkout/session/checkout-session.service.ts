@@ -188,6 +188,13 @@ export class CheckoutSessionService {
     return this.loadSession(sessionId);
   }
 
+  async getActiveSessionForCustomer(customerId: string): Promise<CheckoutSession | null> {
+    return this.sessionRepo.findOne({
+      where: { customerId },
+      order: { createdAt: 'DESC' },
+    }) ?? null;
+  }
+
   async cancelSession(sessionId: string): Promise<CheckoutSession> {
     const session = await this.loadSession(sessionId);
     this.assertNotCanceled(session);
@@ -238,7 +245,9 @@ export class CheckoutSessionService {
       metadata: { checkout_session_id: sessionId },
       after_completion: {
         type: 'redirect',
-        redirect: { url: `${process.env.FRONTEND_URL ?? 'http://localhost:4001'}/chat` },
+        redirect: {
+          url: `${process.env.FRONTEND_URL ?? 'http://localhost:4001'}/chat?payment=success&session=${sessionId}`,
+        },
       },
     });
 

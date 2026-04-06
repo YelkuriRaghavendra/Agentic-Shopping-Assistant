@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import useCustomer from "@/hooks/useCustomer";
 import { useSessions } from "@/hooks/useSessions";
 import { useChat } from "@/hooks/useChat";
@@ -16,6 +17,24 @@ export default function ChatPage() {
   const sessions = useSessions(customer.customerId);
   const chat = useChat(customer.customerId, sessions.activeSessionId);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const searchParams = useSearchParams();
+
+  // When Stripe redirects back with ?payment=success&session=..., notify the user
+  useEffect(() => {
+    const paymentStatus = searchParams.get("payment");
+    const sessionId = searchParams.get("session");
+    if (paymentStatus === "success" && sessionId) {
+      // Clean the URL without reloading
+      const url = new URL(window.location.href);
+      url.searchParams.delete("payment");
+      url.searchParams.delete("session");
+      window.history.replaceState({}, "", url.toString());
+      // Send a message to the chat confirming payment
+      chat.sendMessage(`My payment was completed. Session: ${sessionId}`);
+    }
+  // Only run on mount
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <ErrorBoundary>

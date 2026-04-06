@@ -5,6 +5,7 @@ import {
   Put,
   Param,
   Body,
+  Query,
   Res,
   UsePipes,
   ValidationPipe,
@@ -48,6 +49,12 @@ export class CheckoutController {
       dto.buyer,
       dto.context,
     );
+  }
+
+  /** GET /commerce/checkout-sessions?customerId=... — get active session for a customer */
+  @Get()
+  async getActiveSession(@Query('customerId') customerId: string): Promise<CheckoutSession | null> {
+    return this.checkoutSessionService.getActiveSessionForCustomer(customerId);
   }
 
   /** GET /commerce/checkout/sessions/:id — return local session state */
