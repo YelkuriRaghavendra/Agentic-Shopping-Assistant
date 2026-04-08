@@ -11,6 +11,7 @@ No SQL here.
 No LLM calls here.
 """
 
+import base64
 import os
 import pathlib
 
@@ -402,8 +403,14 @@ class ChatController:
         dest.write_bytes(data)
 
         image_url = f"http://localhost:8000/api/v1/chat/uploads/{filename}"
+
+        # Build base64 data URL for LLM vision (Azure/OpenAI cannot reach localhost)
+        mime = file.content_type or "image/webp"
+        b64 = base64.b64encode(data).decode("ascii")
+        image_base64 = f"data:{mime};base64,{b64}"
+
         logger.info("upload.success", filename=filename, size=len(data))
-        return {"image_url": image_url}
+        return {"image_url": image_url, "image_base64": image_base64}
 
     async def serve_upload(self, filename: str):
         """Serve a previously uploaded image file."""

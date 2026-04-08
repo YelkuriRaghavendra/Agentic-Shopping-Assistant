@@ -59,8 +59,8 @@ function compressImage(dataUrl: string): Promise<Blob> {
   });
 }
 
-/** Upload a compressed image blob to the backend and return the served URL */
-async function uploadImageToServer(blob: Blob): Promise<string> {
+/** Upload a compressed image blob to the backend and return the served URL + base64 data URL */
+async function uploadImageToServer(blob: Blob): Promise<{ image_url: string; image_base64: string }> {
   const formData = new FormData();
   const ext = blob.type === "image/webp" ? "webp" : blob.type === "image/png" ? "png" : "jpg";
   formData.append("file", blob, `upload.${ext}`);
@@ -76,12 +76,13 @@ async function uploadImageToServer(blob: Blob): Promise<string> {
   }
 
   const data = await res.json();
-  return data.image_url as string;
+  return { image_url: data.image_url as string, image_base64: data.image_base64 as string };
 }
 
 export function ChatInput({ onSend, disabled = false, sessionEnded = false }: ChatInputProps) {
   const [value, setValue] = useState("");
   const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [imageBase64, setImageBase64] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -90,9 +91,10 @@ export function ChatInput({ onSend, disabled = false, sessionEnded = false }: Ch
     if (!text && !imageUrl) return;
     if (disabled || isUploading) return;
     const message = text || "Here's my outfit, help me find matching shoes";
-    onSend(message, imageUrl ?? undefined);
+    onSend(message, imageBase64 ?? undefined);
     setValue("");
     setImageUrl(null);
+    setImageBase64(null);
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
@@ -119,8 +121,9 @@ export function ChatInput({ onSend, disabled = false, sessionEnded = false }: Ch
 
       // Compress and upload to backend
       const blob = await compressImage(dataUrl);
-      const url = await uploadImageToServer(blob);
-      setImageUrl(url);
+      const { image_url, image_base64: b64 } = await uploadImageToServer(blob);
+      setImageUrl(image_url);
+      setImageBase64(b64);
     } catch (err) {
       console.error("Image upload failed:", err);
       // Optionally could show an error toast here
@@ -131,7 +134,7 @@ export function ChatInput({ onSend, disabled = false, sessionEnded = false }: Ch
     e.target.value = "";
   }, []);
 
-  const removeImage = () => setImageUrl(null);
+  const removeImage = () => { setImageUrl(null); setImageBase64(null); };
 
   const placeholder = disabled && sessionEnded
     ? "This session has ended"
