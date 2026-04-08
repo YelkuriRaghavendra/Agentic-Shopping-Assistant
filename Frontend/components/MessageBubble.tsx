@@ -6,6 +6,7 @@ import { cn, formatTimestamp } from "@/lib/utils";
 import { sanitizeHtml } from "@/lib/sanitize";
 import { marked } from "marked";
 import { ProductSlider } from "@/components/ProductSlider";
+import { TypingIndicator } from "@/components/TypingIndicator";
 
 /** Convert markdown or raw HTML content to sanitized HTML */
 function renderContent(text: string): string {
@@ -103,7 +104,7 @@ export const MessageBubble = memo(function MessageBubble({ message, onSelectProd
           ) : (
             <>
               {message.content?.replace(/\\n/g, "\n") || null}
-              {!isUser && !message.streamDone && <span className="streaming-cursor" style={{ minHeight: 14 }} />}
+              {!isUser && !message.streamDone && <TypingIndicator />}
             </>
           )}
         </div>
