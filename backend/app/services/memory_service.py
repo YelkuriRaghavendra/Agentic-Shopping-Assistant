@@ -235,8 +235,10 @@ class MemoryService:
         """Pre-fill slots for returning customers."""
         sizes  = profile.get("usual_sizes", {})
         brands = profile.get("preferred_brands", [])
-        if not slots.size and sizes.get("shoes"):
-            slots.size = sizes["shoes"]
+        if not slots.size and sizes:
+            # Try category-specific size first, then use_case, then fallback to "shoes"
+            size_key = slots.category or slots.use_case or "shoes"
+            slots.size = sizes.get(size_key) or sizes.get("shoes") or next(iter(sizes.values()), None)
         if not slots.brand and brands:
             slots.brand = brands[0]
         return slots
@@ -267,9 +269,10 @@ class MemoryService:
             brands.insert(0, b)
             profile["preferred_brands"] = brands[:max_brands]
 
-        if slots.size and slots.category:
+        if slots.size:
+            size_key = slots.category or slots.use_case or "shoes"
             sizes = dict(profile.get("usual_sizes", {}))
-            sizes[slots.category] = slots.size
+            sizes[size_key] = slots.size
             profile["usual_sizes"] = sizes
 
         if slots.budget and slots.budget < budget_cfg["unlimited_sentinel"]:

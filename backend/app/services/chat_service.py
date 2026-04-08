@@ -269,9 +269,19 @@ class ChatService:
         slots          = self._memory.load_slots(session)
         shown_products = self._memory.load_shown_products(session)
 
-        # Pre-fill slots for returning customers (skip questions they answered before)
-        if session.message_count == 0 and customer_profile:
-            slots = self._memory.prefill_slots_from_profile(slots, customer_profile)
+        # Pre-fill slots for returning customers ONLY after they confirm "for myself"
+        # Turn 0 = greeting, don't prefill yet (agent will ask "yourself or someone else?")
+        # Turn 1+ = check if user indicated shopping for themselves
+        if customer_profile and session.message_count > 0:
+            msg_lower = request.message.lower()
+            _self_signals = ["myself", "for me", "for myself", "me ", "i need", "i want", "i'm looking", "im looking", "my size"]
+            _other_signals = ["someone", "someone else", "gift", "for my friend", "for my dad", "for my mom", "for my mum", "for my wife", "for my husband", "for my partner", "for him", "for her"]
+            is_for_self = any(s in msg_lower for s in _self_signals)
+            is_for_other = any(s in msg_lower for s in _other_signals)
+            if is_for_self and not is_for_other:
+                slots = self._memory.prefill_slots_from_profile(slots, customer_profile)
+                # Never prefill budget — always ask fresh
+                slots.budget = None
 
         # ── 5. Input guardrails ───────────────────────────────────────────
         guard = self._guardrails.check_input(request.message)
@@ -710,8 +720,17 @@ class ChatService:
         slots = self._memory.load_slots(session)
         shown_products = self._memory.load_shown_products(session)
 
-        if session.message_count == 0 and customer_profile:
-            slots = self._memory.prefill_slots_from_profile(slots, customer_profile)
+        # Pre-fill slots for returning customers ONLY after they confirm "for myself"
+        if customer_profile and session.message_count > 0:
+            msg_lower = request.message.lower()
+            _self_signals = ["myself", "for me", "for myself", "me ", "i need", "i want", "i'm looking", "im looking", "my size"]
+            _other_signals = ["someone", "someone else", "gift", "for my friend", "for my dad", "for my mom", "for my mum", "for my wife", "for my husband", "for my partner", "for him", "for her"]
+            is_for_self = any(s in msg_lower for s in _self_signals)
+            is_for_other = any(s in msg_lower for s in _other_signals)
+            if is_for_self and not is_for_other:
+                slots = self._memory.prefill_slots_from_profile(slots, customer_profile)
+                # Never prefill budget — always ask fresh
+                slots.budget = None
 
         guard = self._guardrails.check_input(request.message)
         if not guard.passed:
@@ -914,8 +933,8 @@ class ChatService:
         # ── Greeting ─────────────────────────────────────────────────
         if intent == "greeting":
             return [
-                s("Running shoes", "I need running shoes"),
-                s("Casual shoes", "Show me casual shoes"),
+                s("Shopping for myself", "I'm shopping for myself"),
+                s("For someone else", "I'm looking for someone else"),
                 s("What's popular?", "What are your most popular shoes?"),
             ]
 
