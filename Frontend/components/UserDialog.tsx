@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface UserDialogProps {
@@ -13,6 +14,7 @@ export function UserDialog({ open, onSubmit, error }: UserDialogProps) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const router = useRouter();
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -20,6 +22,7 @@ export function UserDialog({ open, onSubmit, error }: UserDialogProps) {
     setIsSubmitting(true);
     try {
       await onSubmit(name.trim(), email.trim());
+      router.push("/chat");
     } finally {
       setIsSubmitting(false);
     }

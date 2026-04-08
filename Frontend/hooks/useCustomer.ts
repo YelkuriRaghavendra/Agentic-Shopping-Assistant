@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { httpClient, HttpError } from "@/services/httpClient";
 import { endpoints } from "@/config/config";
 import type { CustomerResponse } from "@/types/chat.types";
@@ -22,6 +23,7 @@ export default function useCustomer(): UseCustomerReturn {
   const [customer, setCustomer] = useState<CustomerResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pendingMessage, setPendingMessage] = useState<string | null>(null);
 
@@ -87,7 +89,8 @@ export default function useCustomer(): UseCustomerReturn {
     localStorage.removeItem("customer_id");
     setCustomer(null);
     setDialogOpen(true);
-  }, []);
+    router.push("/");
+  }, [router]);
 
   return {
     customer,
