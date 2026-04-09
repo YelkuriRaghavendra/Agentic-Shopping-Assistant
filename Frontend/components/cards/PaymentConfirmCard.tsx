@@ -33,13 +33,12 @@ export function PaymentConfirmCard({
       const stripe = await stripePromise;
       if (!stripe || cancelled) return;
 
-      const { error, paymentIntent } = await stripe.confirmPayment({
-        clientSecret,
-        confirmParams: {
-          return_url: window.location.href,
-        },
-        redirect: "if_required",
-      });
+      // Use confirmCardPayment — the PaymentIntent already has a
+      // payment_method attached. This handles 3DS authentication
+      // via Stripe's popup/redirect for Indian cards (RBI mandate).
+      const { error, paymentIntent } = await stripe.confirmCardPayment(
+        clientSecret
+      );
 
       if (cancelled) return;
 
