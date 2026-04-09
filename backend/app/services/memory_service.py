@@ -12,6 +12,7 @@ Cross-session people context:
 from __future__ import annotations
 
 import uuid
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, UTC
 from typing import Any
@@ -169,6 +170,32 @@ class MemoryService:
 
     def load_summary(self, session: Session) -> str | None:
         return session.context.get("summary")
+
+    # ── Checkout agent mode ──────────────────────────────────────────
+
+    def get_active_agent(self, session: Session) -> str | None:
+        """Return the active agent name, or None for default shopping."""
+        return (session.context or {}).get("active_agent")
+
+    def get_checkout_entered_at(self, session: Session) -> float | None:
+        """Return the timestamp when checkout mode was entered."""
+        return (session.context or {}).get("checkout_entered_at")
+
+    async def set_active_agent(
+        self, session: Session, agent_name: str | None
+    ) -> None:
+        """Set or clear the active agent in session context."""
+        if session.context is None:
+            session.context = {}
+        if agent_name:
+            session.context["active_agent"] = agent_name
+            session.context["checkout_entered_at"] = time.time()
+        else:
+            session.context.pop("active_agent", None)
+            session.context.pop("checkout_entered_at", None)
+        await self._session_repo.update_context(session, session.context)
+
+    # ── Session memory persistence ─────────────────────────────────
 
     async def persist_session_memory(
         self,
