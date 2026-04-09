@@ -1466,14 +1466,14 @@ class ChatService:
         if tool_call.tool_name == "exit_checkout":
             await self._memory.set_active_agent(session, None)
 
-        # If a checkout tool failed, auto-clear checkout mode so user isn't stuck
+        # Log checkout tool failures but DON'T auto-exit — let the agent handle it.
+        # The agent prompt knows how to offer alternatives on failure.
         if not tool_result.success and tool_call.tool_name != "exit_checkout":
             logger.warning(
-                "chat.checkout_tool_failed_clearing_mode",
+                "chat.checkout_tool_failed",
                 tool=tool_call.tool_name,
                 error=tool_result.summary,
             )
-            await self._memory.set_active_agent(session, None)
 
         # Generate response with tool result context
         try:
