@@ -100,6 +100,20 @@ export class CheckoutController {
     return this.checkoutSessionService.createPaymentLink(id);
   }
 
+  /** POST /commerce/checkout-sessions/:id/charge-saved — charge a saved card server-side */
+  @Post(':id/charge-saved')
+  @HttpCode(HttpStatus.OK)
+  async chargeSavedCard(
+    @Param('id') id: string,
+    @Body() body: { payment_method_id: string; customer_id: string },
+  ): Promise<CheckoutSession> {
+    return this.checkoutSessionService.chargeSavedPaymentMethod(
+      id,
+      body.payment_method_id,
+      body.customer_id,
+    );
+  }
+
   /** POST /commerce/checkout/sessions/:id/cancel — cancel session */
   @Post(':id/cancel')
   @HttpCode(HttpStatus.OK)
