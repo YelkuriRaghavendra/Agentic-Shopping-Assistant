@@ -16,6 +16,7 @@ export const CommerceErrorCodes = {
   LINE_ITEM_LIMIT_EXCEEDED: 'line_item_limit_exceeded',
   CHECKOUT_LOCKED: 'checkout_locked',
   SESSION_CANCELED: 'session_canceled',
+  VALIDATION: 'validation',
 
   // Payment
   PAYMENT_FAILED: 'payment_failed',

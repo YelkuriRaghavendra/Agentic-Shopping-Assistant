@@ -183,6 +183,8 @@ export interface ChatMessageUI {
     pincode?: string;
     phone?: string;
   };
+  /** Stripe PaymentIntent secret — triggers inline payment confirmation (3DS) */
+  paymentIntentSecret?: string;
   /** Checkout action from agent */
   checkoutAction?: {
     action: string;

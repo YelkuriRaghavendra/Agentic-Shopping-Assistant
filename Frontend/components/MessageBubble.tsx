@@ -23,6 +23,7 @@ function renderContent(text: string): string {
 import { SuggestionChips } from "@/components/SuggestionChips";
 import { OrderConfirmationCard } from "@/components/OrderConfirmationCard";
 import { PaymentSetupCard } from "@/components/cards/PaymentSetupCard";
+import { PaymentConfirmCard } from "@/components/cards/PaymentConfirmCard";
 import { AddressFormCard } from "@/components/cards/AddressFormCard";
 import type { ChatMessageUI, ProductCardDTO } from "@/types/chat.types";
 
@@ -121,6 +122,15 @@ export const MessageBubble = memo(function MessageBubble({ message, onSelectProd
             clientSecret={message.setupIntentSecret}
             onComplete={(pm) => onCheckoutAction("payment_setup_complete", { payment_method: pm })}
             onError={(reason) => onCheckoutAction("payment_setup_failed", { reason })}
+          />
+        )}
+
+        {/* Inline Payment Confirmation Card (3DS) */}
+        {!isUser && message.paymentIntentSecret && onCheckoutAction && (
+          <PaymentConfirmCard
+            clientSecret={message.paymentIntentSecret}
+            onComplete={() => onCheckoutAction("payment_confirmed", {})}
+            onError={(reason) => onCheckoutAction("payment_failed", { reason })}
           />
         )}
 

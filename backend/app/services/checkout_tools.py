@@ -230,6 +230,25 @@ class CheckoutToolRegistry:
         )
 
         if response.success:
+            # charge-saved now returns clientSecret for 3DS confirmation
+            client_secret = response.data.get("clientSecret", "")
+            payment_intent_id = response.data.get("paymentIntentId", "")
+
+            if client_secret:
+                # Frontend needs to confirm payment (3DS flow)
+                return CheckoutToolResult(
+                    tool_name="place_order",
+                    success=True,
+                    data={
+                        "payment_intent_secret": client_secret,
+                        "payment_intent_id": payment_intent_id,
+                        "checkout_session_id": session_id,
+                    },
+                    summary="Payment created. Customer needs to confirm payment (3DS may be required).",
+                    checkout_action="confirm_payment",
+                )
+
+            # Direct success (no 3DS needed)
             order_id = response.data.get("ucpOrderId", session_id)
             delivery = response.data.get("estimatedDelivery", "5-7 business days")
             return CheckoutToolResult(

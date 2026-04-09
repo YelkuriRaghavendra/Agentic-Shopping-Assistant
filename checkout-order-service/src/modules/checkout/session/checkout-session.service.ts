@@ -334,14 +334,17 @@ export class CheckoutSessionService {
   }
 
   /**
-   * Charge a saved payment method server-side (off_session).
-   * Used by the checkout agent to complete purchase without frontend redirect.
+   * Create a PaymentIntent for a saved card, returning client_secret for
+   * frontend confirmation (supports 3DS required by Indian cards/RBI).
+   *
+   * Flow: backend creates PI → returns client_secret → frontend confirms
+   * with stripe.confirmPayment() → webhook completes the order.
    */
   async chargeSavedPaymentMethod(
     sessionId: string,
     paymentMethodId: string,
     customerId: string,
-  ): Promise<CheckoutSession> {
+  ): Promise<{ clientSecret: string; paymentIntentId: string; session: CheckoutSession }> {
     const session = await this.loadSession(sessionId);
     this.assertNotCanceled(session);
 
@@ -369,26 +372,24 @@ export class CheckoutSessionService {
       stripeCustomerId = newCustomer.id;
     }
 
+    // Create PaymentIntent WITHOUT confirming — frontend handles 3DS
     const paymentIntent = await this.stripe.paymentIntents.create({
       amount,
       currency: 'inr',
       customer: stripeCustomerId,
       payment_method: paymentMethodId,
-      off_session: true,
-      confirm: true,
       metadata: { checkout_session_id: sessionId },
     });
 
     session.stripePaymentIntentId = paymentIntent.id;
     session.stripeClientSecret = paymentIntent.client_secret ?? null;
-    session.ucpStatus = UcpCheckoutStatus.COMPLETED;
-    if (!session.ucpOrderId) {
-      session.ucpOrderId = randomUUID();
-    }
     await this.sessionRepo.save(session);
-    await this.handleCompleted(session);
 
-    return session;
+    return {
+      clientSecret: paymentIntent.client_secret!,
+      paymentIntentId: paymentIntent.id,
+      session,
+    };
   }
 
   // ── Private helpers ─────────────────────────────────────────────────────────

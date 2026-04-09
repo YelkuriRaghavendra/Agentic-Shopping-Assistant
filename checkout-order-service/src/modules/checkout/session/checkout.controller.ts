@@ -100,18 +100,22 @@ export class CheckoutController {
     return this.checkoutSessionService.createPaymentLink(id);
   }
 
-  /** POST /commerce/checkout-sessions/:id/charge-saved — charge a saved card server-side */
+  /** POST /commerce/checkout-sessions/:id/charge-saved — create PaymentIntent for saved card (returns client_secret for 3DS) */
   @Post(':id/charge-saved')
   @HttpCode(HttpStatus.OK)
   async chargeSavedCard(
     @Param('id') id: string,
     @Body() body: { payment_method_id: string; customer_id: string },
-  ): Promise<CheckoutSession> {
-    return this.checkoutSessionService.chargeSavedPaymentMethod(
+  ): Promise<{ clientSecret: string; paymentIntentId: string }> {
+    const result = await this.checkoutSessionService.chargeSavedPaymentMethod(
       id,
       body.payment_method_id,
       body.customer_id,
     );
+    return {
+      clientSecret: result.clientSecret,
+      paymentIntentId: result.paymentIntentId,
+    };
   }
 
   /** POST /commerce/checkout/sessions/:id/cancel — cancel session */
