@@ -1,11 +1,12 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject } from '@nestjs/common';
 import Stripe from 'stripe';
+import { STRIPE_CLIENT } from './stripe.provider';
 
 @Injectable()
 export class StripeCustomerService {
   private readonly logger = new Logger(StripeCustomerService.name);
 
-  constructor(private readonly stripe: Stripe) {}
+  constructor(@Inject(STRIPE_CLIENT) private readonly stripe: Stripe) {}
 
   /**
    * Get or create a Stripe Customer for our internal customer ID.
