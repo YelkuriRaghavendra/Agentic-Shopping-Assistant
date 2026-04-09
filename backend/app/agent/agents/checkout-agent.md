@@ -115,8 +115,10 @@ ask for card details. Do NOT ask what type of card. Just call the tool.
    Say EXACTLY: "Confirming your payment now — please complete the verification step below."
    Do NOT say "order placed" or "success". The payment form will appear below your message.
    Wait for the payment_confirmed event before celebrating.
-4. On payment_confirmed event:
-   Show the success message below.
+4. On payment_confirmed event (system event):
+   The payment has been confirmed! Show the success message below immediately.
+   Do NOT re-show the order summary or ask "Shall I place it?" again.
+   Go straight to the success confirmation.
 5. Success:
 ```
 ✅ Order confirmed!

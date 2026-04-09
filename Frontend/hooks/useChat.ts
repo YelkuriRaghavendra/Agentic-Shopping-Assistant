@@ -320,16 +320,10 @@ export function useChat(
 
       if (sessionEnded) return;
 
-      const userMessage: ChatMessageUI = {
-        id: generateId(),
-        role: "user",
-        content: trimmed || "Here's my outfit, help me find matching shoes",
-        imageBase64: imageBase64,
-        timestamp: new Date(),
-      };
+      // __checkout: prefixed messages are system actions from card components
+      // Don't show them as user messages in the chat
+      const isCheckoutAction = trimmed.startsWith("__checkout:");
 
-      // Add both user message and bot placeholder in a single state update
-      // to guarantee user message always appears above bot response
       const botId = generateId();
       const botMessage: ChatMessageUI = {
         id: botId,
@@ -337,7 +331,20 @@ export function useChat(
         content: "",
         timestamp: new Date(),
       };
-      setMessages((prev) => [...prev, userMessage, botMessage]);
+
+      if (isCheckoutAction) {
+        // Only add bot placeholder (no user bubble)
+        setMessages((prev) => [...prev, botMessage]);
+      } else {
+        const userMessage: ChatMessageUI = {
+          id: generateId(),
+          role: "user",
+          content: trimmed || "Here's my outfit, help me find matching shoes",
+          imageBase64: imageBase64,
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, userMessage, botMessage]);
+      }
       setLoading(true);
       setError(null);
       scrollToBottom();

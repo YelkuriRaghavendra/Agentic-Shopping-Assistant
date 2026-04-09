@@ -1401,18 +1401,9 @@ class ChatService:
 
         # Handle __checkout: prefixed messages from frontend card actions
         message = request.message
-
-        # If the message is a checkout trigger (from re-entry or stale session),
-        # rewrite it so the agent presents the order summary instead of
-        # misinterpreting the product name as a recommendation request
-        _checkout_triggers = [
-            "checkout", "buy now", "buy it", "buy this", "i want to buy",
-            "place order", "purchase", "customer wants to checkout",
-        ]
-        if any(t in message.lower() for t in _checkout_triggers):
-            message = "Customer wants to checkout. Present the order summary."
-
         checkout_event = None
+
+        # __checkout: messages are system events — parse BEFORE trigger rewrite
         if message.startswith("__checkout:"):
             # Format: __checkout:action_type:json_payload
             parts = message.split(":", 2)  # ["__checkout", "action_type", "json_payload"]
@@ -1428,6 +1419,15 @@ class ChatService:
             if request.filters:
                 checkout_event.update(request.filters)
             message = f"[System event: {event_type}]"
+        else:
+            # If the message is a checkout trigger (from re-entry or stale session),
+            # rewrite it so the agent presents the order summary
+            _checkout_triggers = [
+                "checkout", "buy now", "buy it", "buy this", "i want to buy",
+                "place order", "purchase", "customer wants to checkout",
+            ]
+            if any(t in message.lower() for t in _checkout_triggers):
+                message = "Customer wants to checkout. Present the order summary."
 
         # Load checkout agent prompt
         agent_prompt = skill_loader.load_agent("checkout-agent")
