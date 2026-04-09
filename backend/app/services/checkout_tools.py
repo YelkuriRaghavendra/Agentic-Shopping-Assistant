@@ -244,7 +244,14 @@ class CheckoutToolRegistry:
                         "payment_intent_id": payment_intent_id,
                         "checkout_session_id": session_id,
                     },
-                    summary="Payment created. Customer needs to confirm payment (3DS may be required).",
+                    summary=(
+                        "IMPORTANT: Payment is NOT complete yet. "
+                        "A payment confirmation form will appear below your message. "
+                        "Tell the customer: 'Confirming your payment now — "
+                        "you may need to complete a quick verification step below.' "
+                        "Do NOT say the order is placed. The order will be confirmed "
+                        "after payment authentication completes."
+                    ),
                     checkout_action="confirm_payment",
                 )
 

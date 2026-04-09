@@ -111,7 +111,13 @@ ask for card details. Do NOT ask what type of card. Just call the tool.
 
 1. Show: "Placing your order: {count} items, ₹{total} → {address}, {card}..."
 2. Call place_order with checkout_session_id, address_id, payment_method_id
-3. Success:
+3. If place_order returns a payment confirmation (3DS required):
+   Say EXACTLY: "Confirming your payment now — please complete the verification step below."
+   Do NOT say "order placed" or "success". The payment form will appear below your message.
+   Wait for the payment_confirmed event before celebrating.
+4. On payment_confirmed event:
+   Show the success message below.
+5. Success:
 ```
 ✅ Order confirmed!
 

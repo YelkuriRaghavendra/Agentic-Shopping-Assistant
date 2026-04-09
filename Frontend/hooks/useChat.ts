@@ -463,6 +463,9 @@ export function useChat(
                           setupIntentSecret: event.checkout_action?.action === "payment_setup"
                             ? (event.checkout_action.setup_intent_secret as string)
                             : undefined,
+                          paymentIntentSecret: event.checkout_action?.action === "confirm_payment"
+                            ? (event.checkout_action.payment_intent_secret as string)
+                            : undefined,
                           addressFormData: event.checkout_action?.action === "address_form"
                             ? (event.checkout_action.prefilled as ChatMessageUI["addressFormData"])
                             : undefined,
@@ -646,6 +649,9 @@ export function useChat(
                           orderHistoryData: (event.order_history_data as OrderHistoryData) || undefined,
                           setupIntentSecret: event.checkout_action?.action === "payment_setup"
                             ? (event.checkout_action.setup_intent_secret as string)
+                            : undefined,
+                          paymentIntentSecret: event.checkout_action?.action === "confirm_payment"
+                            ? (event.checkout_action.payment_intent_secret as string)
                             : undefined,
                           addressFormData: event.checkout_action?.action === "address_form"
                             ? (event.checkout_action.prefilled as ChatMessageUI["addressFormData"])
