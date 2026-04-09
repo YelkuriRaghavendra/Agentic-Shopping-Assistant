@@ -172,4 +172,20 @@ export interface ChatMessageUI {
   orderConfirmation?: OrderConfirmation;
   cartData?: CartData;
   orderHistoryData?: OrderHistoryData;
+  /** Stripe SetupIntent secret — triggers inline card collection */
+  setupIntentSecret?: string;
+  /** Pre-filled address data — triggers inline address form */
+  addressFormData?: {
+    full_name?: string;
+    address_line?: string;
+    city?: string;
+    state?: string;
+    pincode?: string;
+    phone?: string;
+  };
+  /** Checkout action from agent */
+  checkoutAction?: {
+    action: string;
+    [key: string]: unknown;
+  };
 }

@@ -22,6 +22,8 @@ function renderContent(text: string): string {
 }
 import { SuggestionChips } from "@/components/SuggestionChips";
 import { OrderConfirmationCard } from "@/components/OrderConfirmationCard";
+import { PaymentSetupCard } from "@/components/cards/PaymentSetupCard";
+import { AddressFormCard } from "@/components/cards/AddressFormCard";
 import type { ChatMessageUI, ProductCardDTO } from "@/types/chat.types";
 
 export interface MessageBubbleProps {
@@ -29,10 +31,10 @@ export interface MessageBubbleProps {
   onSelectProduct?: (productId: string, productName: string) => void;
   onSelectSuggestion?: (message: string) => void;
   onCompareProducts?: (products: ProductCardDTO[]) => void;
-  onCheckout?: (message: ChatMessageUI) => void;
+  onCheckoutAction?: (action: string, payload: Record<string, unknown>) => void;
 }
 
-export const MessageBubble = memo(function MessageBubble({ message, onSelectProduct, onSelectSuggestion, onCompareProducts, onCheckout }: MessageBubbleProps) {
+export const MessageBubble = memo(function MessageBubble({ message, onSelectProduct, onSelectSuggestion, onCompareProducts, onCheckoutAction }: MessageBubbleProps) {
   const isUser = message.role === "user";
 
   return (
@@ -113,20 +115,21 @@ export const MessageBubble = memo(function MessageBubble({ message, onSelectProd
           <OrderConfirmationCard order={message.orderConfirmation} />
         )}
 
-        {/* Checkout CTA */}
-        {!isUser && message.checkoutData && onCheckout && (
-          <button
-            onClick={() => onCheckout(message)}
-            className="inline-block rounded-full text-[12px] font-medium px-5 py-2.5 border-none cursor-pointer transition-all duration-200"
-            style={{
-              background: "linear-gradient(135deg, #1D9E75, #0F6E56)",
-              color: "#fff",
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.transform = "scale(1.03)"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.transform = "scale(1)"; }}
-          >
-            Proceed to Checkout &rarr;
-          </button>
+        {/* Inline Payment Setup Card */}
+        {!isUser && message.setupIntentSecret && onCheckoutAction && (
+          <PaymentSetupCard
+            clientSecret={message.setupIntentSecret}
+            onComplete={(pm) => onCheckoutAction("payment_setup_complete", { payment_method: pm })}
+            onError={(reason) => onCheckoutAction("payment_setup_failed", { reason })}
+          />
+        )}
+
+        {/* Inline Address Form Card */}
+        {!isUser && message.addressFormData && onCheckoutAction && (
+          <AddressFormCard
+            prefilled={message.addressFormData}
+            onSubmit={(addr) => onCheckoutAction("address_submitted", addr)}
+          />
         )}
 
         {/* Suggestion chips */}

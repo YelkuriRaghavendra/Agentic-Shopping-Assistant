@@ -34,6 +34,7 @@ interface UseChatReturn {
   sendProductMessage: (productId: string, productName: string) => void;
   sendCompareMessage: (products: ProductCardDTO[]) => void;
   addOrderConfirmation: (order: OrderConfirmation) => void;
+  sendCheckoutAction: (action: string, payload: Record<string, unknown>) => void;
   isLoading: boolean;
   isTyping: boolean;
   isHistoryLoading: boolean;
@@ -449,6 +450,13 @@ export function useChat(
                           checkoutData: event.checkout_data || undefined,
                           cartData: (event.cart_data as CartData) || undefined,
                           orderHistoryData: (event.order_history_data as OrderHistoryData) || undefined,
+                          setupIntentSecret: event.checkout_action?.action === "payment_setup"
+                            ? (event.checkout_action.setup_intent_secret as string)
+                            : undefined,
+                          addressFormData: event.checkout_action?.action === "address_form"
+                            ? (event.checkout_action.prefilled as ChatMessageUI["addressFormData"])
+                            : undefined,
+                          checkoutAction: event.checkout_action || undefined,
                           streamDone: true,
                         }
                       : m
@@ -734,12 +742,21 @@ export function useChat(
     [activeSessionId]
   );
 
+  const sendCheckoutAction = useCallback(
+    (action: string, payload: Record<string, unknown>) => {
+      const msg = `__checkout:${action}`;
+      sendMessage(msg);
+    },
+    [sendMessage]
+  );
+
   return {
     messages,
     sendMessage,
     sendProductMessage,
     sendCompareMessage,
     addOrderConfirmation,
+    sendCheckoutAction,
     isLoading,
     isTyping,
     isHistoryLoading,

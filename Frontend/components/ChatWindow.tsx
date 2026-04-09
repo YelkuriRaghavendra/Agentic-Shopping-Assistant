@@ -5,14 +5,13 @@ import { AnimatePresence } from "framer-motion";
 import { MessageBubble } from "./MessageBubble";
 import { ChatInput } from "./ChatInput";
 import { TypingIndicator } from "./TypingIndicator";
-import { CheckoutModal } from "./CheckoutModal";
+// CheckoutModal removed — checkout is now conversational
 import { CartPanel } from "./CartPanel";
 import { OrderHistoryPanel } from "./OrderHistoryPanel";
 import { endpoints } from "@/config/config";
 import type {
   ChatMessageUI,
   ProductCardDTO,
-  CheckoutData,
   CartData,
   OrderHistoryData,
   OrderConfirmation,
@@ -35,6 +34,7 @@ export interface ChatWindowProps {
   customerId?: string | null;
   updateProfile?: (profile: Record<string, unknown>) => Promise<void>;
   addOrderConfirmation?: (order: OrderConfirmation) => void;
+  sendCheckoutAction?: (action: string, payload: Record<string, unknown>) => void;
 }
 
 function HistorySkeleton() {
@@ -84,10 +84,8 @@ export function ChatWindow({
   customerId,
   updateProfile,
   addOrderConfirmation,
+  sendCheckoutAction,
 }: ChatWindowProps) {
-  const [checkoutOpen, setCheckoutOpen] = useState(false);
-  const [checkoutData, setCheckoutData] = useState<CheckoutData | null>(null);
-
   // Task 8.1: cart/orders drawer state
   const [cartData, setCartData] = useState<CartData | null>(null);
   const [orderHistoryData, setOrderHistoryData] = useState<OrderHistoryData | null>(null);
@@ -164,18 +162,6 @@ export function ChatWindow({
       }
     }
   }, [messages]);
-
-  const handleCheckout = (message: ChatMessageUI) => {
-    if (message.checkoutData) {
-      // Always use the most recent checkoutData to avoid reusing a completed session
-      const latestCheckoutMsg = [...messages].reverse().find(
-        (m) => m.role === "bot" && m.checkoutData
-      );
-      const data = latestCheckoutMsg?.checkoutData ?? message.checkoutData;
-      setCheckoutData(data);
-      setCheckoutOpen(true);
-    }
-  };
 
   const cartItemCount = cartData?.line_items.length ?? 0;
   const orderCount = orderHistoryData?.orders.length ?? 0;
@@ -386,7 +372,7 @@ export function ChatWindow({
                   onSelectProduct={sendProductMessage}
                   onSelectSuggestion={sendMessage}
                   onCompareProducts={sendCompareMessage}
-                  onCheckout={handleCheckout}
+                  onCheckoutAction={sendCheckoutAction}
                 />
               ))}
               {isTyping && !messages.some((m) => m.role === "bot" && !m.streamDone) && (
@@ -440,9 +426,7 @@ export function ChatWindow({
               cartData={cartData}
               onCheckout={() => {
                 setCartOpen(false);
-                // Cast CartData → CheckoutData (same shape)
-                setCheckoutData(cartData as CheckoutData);
-                setCheckoutOpen(true);
+                sendMessage("checkout");
               }}
             />
           )}
@@ -498,24 +482,6 @@ export function ChatWindow({
         sessionEnded={sessionEnded}
       />
 
-      {/* Checkout Modal */}
-      {checkoutData && (
-        <CheckoutModal
-          open={checkoutOpen}
-          checkoutData={checkoutData}
-          customerId={customerId ?? undefined}
-          updateProfile={updateProfile}
-          onClose={() => setCheckoutOpen(false)}
-          onComplete={(orderInfo) => {
-            if (orderInfo && addOrderConfirmation) {
-              addOrderConfirmation(orderInfo);
-            } else {
-              sendMessage("My order has been placed successfully!");
-            }
-          }}
-        />
-      )}
-
       {/* CartDrawer — slides in from right, overlays full chat height */}
       <div
         aria-label="Cart drawer"
@@ -557,8 +523,7 @@ export function ChatWindow({
             cartData={cartData}
             onCheckout={() => {
               setCartOpen(false);
-              setCheckoutData(cartData as CheckoutData);
-              setCheckoutOpen(true);
+              sendMessage("checkout");
             }}
           />
         )}
