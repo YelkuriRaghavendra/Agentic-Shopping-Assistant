@@ -135,6 +135,24 @@ CHECKOUT_TOOL_DEFINITIONS: list[dict] = [
     {
         "type": "function",
         "function": {
+            "name": "direct_answer",
+            "description": (
+                "Respond directly to the customer without calling another tool. "
+                "Use for presenting order summaries, confirming addresses, "
+                "asking questions, or any conversational response."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "content": {"type": "string"},
+                },
+                "required": ["content"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "exit_checkout",
             "description": (
                 "Hand control back to shopping assistant. "
@@ -324,6 +342,15 @@ class CheckoutToolRegistry:
             success=response.success,
             data=response.data if response.success else {},
             summary="Cart updated." if response.success else "Failed to update cart.",
+        )
+
+    async def _handle_direct_answer(self, args: dict) -> CheckoutToolResult:
+        content = args.get("content", "")
+        return CheckoutToolResult(
+            tool_name="direct_answer",
+            success=True,
+            data={"content": content},
+            summary=content,
         )
 
     async def _handle_exit_checkout(self, args: dict) -> CheckoutToolResult:

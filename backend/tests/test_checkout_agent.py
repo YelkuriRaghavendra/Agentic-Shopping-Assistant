@@ -24,8 +24,9 @@ class TestCheckoutToolDefinitions:
         assert "request_payment_setup" in names
         assert "request_address_form" in names
         assert "update_cart" in names
+        assert "direct_answer" in names
         assert "exit_checkout" in names
-        assert len(names) == 6
+        assert len(names) == 7
 
     def test_place_order_requires_all_params(self):
         place = next(
