@@ -350,8 +350,16 @@ class ChatService:
                 logger.warning("chat.checkout_session_create_failed", error=str(exc))
 
             await self._memory.set_active_agent(session, "checkout")
+            # Rewrite message for the checkout agent — it should see a checkout
+            # request, not the raw product query that triggered checkout_initiate
+            checkout_request = ChatRequest(
+                message="Customer wants to checkout. Present the order summary.",
+                customer_id=request.customer_id,
+                session_id=request.session_id,
+                channel=request.channel,
+            )
             return await self._handle_checkout_mode(
-                session=session, request=request,
+                session=session, request=checkout_request,
                 customer_profile=customer_profile,
                 conversation=conversation,
                 t_start=t_start,
@@ -844,8 +852,14 @@ class ChatService:
                 logger.warning("chat.checkout_session_create_failed", error=str(exc))
 
             await self._memory.set_active_agent(session, "checkout")
+            checkout_request = ChatRequest(
+                message="Customer wants to checkout. Present the order summary.",
+                customer_id=request.customer_id,
+                session_id=request.session_id,
+                channel=request.channel,
+            )
             checkout_resp = await self._handle_checkout_mode(
-                session=session, request=request,
+                session=session, request=checkout_request,
                 customer_profile=customer_profile,
                 conversation=conversation, t_start=t_start,
             )
@@ -1439,6 +1453,15 @@ class ChatService:
 
         # Handle exit_checkout — clear mode
         if tool_call.tool_name == "exit_checkout":
+            await self._memory.set_active_agent(session, None)
+
+        # If a checkout tool failed, auto-clear checkout mode so user isn't stuck
+        if not tool_result.success and tool_call.tool_name != "exit_checkout":
+            logger.warning(
+                "chat.checkout_tool_failed_clearing_mode",
+                tool=tool_call.tool_name,
+                error=tool_result.summary,
+            )
             await self._memory.set_active_agent(session, None)
 
         # Generate response with tool result context
