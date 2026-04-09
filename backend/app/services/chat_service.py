@@ -1414,8 +1414,17 @@ class ChatService:
 
         checkout_event = None
         if message.startswith("__checkout:"):
-            event_type = message.split(":", 1)[1] if ":" in message else ""
+            # Format: __checkout:action_type:json_payload
+            parts = message.split(":", 2)  # ["__checkout", "action_type", "json_payload"]
+            event_type = parts[1] if len(parts) > 1 else ""
             checkout_event = {"event": event_type}
+            # Parse JSON payload if present
+            if len(parts) > 2:
+                try:
+                    payload = json.loads(parts[2])
+                    checkout_event.update(payload)
+                except json.JSONDecodeError:
+                    pass
             if request.filters:
                 checkout_event.update(request.filters)
             message = f"[System event: {event_type}]"

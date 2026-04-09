@@ -765,7 +765,8 @@ export function useChat(
 
   const sendCheckoutAction = useCallback(
     (action: string, payload: Record<string, unknown>) => {
-      const msg = `__checkout:${action}`;
+      // Encode the payload as JSON in the message so the backend can parse it
+      const msg = `__checkout:${action}:${JSON.stringify(payload)}`;
       sendMessage(msg);
     },
     [sendMessage]
