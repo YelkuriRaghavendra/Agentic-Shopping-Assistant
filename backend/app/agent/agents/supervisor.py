@@ -28,6 +28,21 @@ def _classify_commerce_intent(text: str) -> str | None:
     return None
 
 
+def _is_purchase_confirmation(text: str, history_messages: list) -> bool:
+    """Check if the user is confirming a purchase based on conversation context."""
+    text_lower = text.lower().strip()
+    confirm_words = {"yes", "yeah", "yep", "sure", "go ahead", "confirm", "ok", "okay", "do it", "proceed", "let's do it", "yes please"}
+    if text_lower not in confirm_words:
+        return False
+    # Check if recent bot messages mention purchase/buy/checkout
+    for msg in reversed(history_messages[-4:]):
+        content = msg.content if hasattr(msg, "content") else str(msg)
+        content_lower = content.lower()
+        if any(w in content_lower for w in ["purchase", "buy", "checkout", "assist with the purchase", "confirm purchase", "place the order"]):
+            return True
+    return False
+
+
 def create_supervisor_node(llm: BaseChatModel):
     prompt_text = _PROMPT_PATH.read_text(encoding="utf-8")
 
@@ -52,12 +67,31 @@ def create_supervisor_node(llm: BaseChatModel):
             logger.info("supervisor.commerce_keyword", intent=commerce_intent)
             return {"current_agent": "checkout", "intent": commerce_intent}
 
-        # LLM classification
+        # Fast path: purchase confirmation ("yes" after "would you like to buy?")
+        if _is_purchase_confirmation(user_text, messages):
+            logger.info("supervisor.purchase_confirmation", message_preview=user_text[:60])
+            return {"current_agent": "checkout", "intent": "checkout_initiate"}
+
+        # LLM classification — include recent history for context
+        history_for_llm = []
+        for msg in messages[-6:]:  # last 3 turns
+            if hasattr(msg, "type"):
+                role = "user" if msg.type == "human" else "assistant"
+            else:
+                role = "user"
+            history_for_llm.append({"role": role, "content": msg.content if hasattr(msg, "content") else str(msg)})
+
         try:
-            response = await llm.ainvoke([
-                SystemMessage(content=prompt_text),
-                HumanMessage(content=user_text),
-            ])
+            llm_messages = [SystemMessage(content=prompt_text)]
+            for h in history_for_llm[:-1]:  # history except last (added separately)
+                if h["role"] == "user":
+                    llm_messages.append(HumanMessage(content=h["content"]))
+                else:
+                    from langchain_core.messages import AIMessage
+                    llm_messages.append(AIMessage(content=h["content"]))
+            llm_messages.append(HumanMessage(content=user_text))
+
+            response = await llm.ainvoke(llm_messages)
             raw = response.content.strip()
             data = json.loads(raw)
             agent = data.get("agent", "shopping")

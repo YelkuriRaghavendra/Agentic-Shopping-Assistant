@@ -8,6 +8,8 @@ import re
 
 from langgraph.graph import END, StateGraph
 
+from langchain_core.messages import HumanMessage, SystemMessage
+
 from app.agent.agents.gift_finder import create_gift_finder_agent
 from app.agent.agents.shopping import create_shopping_agent
 from app.agent.agents.style_advisor import create_style_advisor_agent
@@ -109,6 +111,35 @@ def build_graph(rag_client: RAGClient, checkpointer=None):
 
         return wrapper
 
+    # Checkout node — uses primary LLM with checkout prompt to guide the flow
+    checkout_prompt = (
+        "You are a checkout assistant. The customer wants to complete a purchase.\n\n"
+        "CHECKOUT FLOW:\n"
+        "1. Confirm the product they want to buy (check conversation history)\n"
+        "2. Ask for delivery address if not provided\n"
+        "3. Present an order summary with product name, price, and delivery address\n"
+        "4. Ask for final confirmation\n"
+        "5. On confirmation, tell them the order is being processed\n\n"
+        "Be concise and helpful. Reference the specific product from the conversation.\n"
+        "If the customer wants to go back to shopping, let them know they can browse more products."
+    )
+
+    async def checkout_node(state: dict) -> dict:
+        messages = state.get("messages", [])
+        try:
+            response = await primary_llm.ainvoke([
+                SystemMessage(content=checkout_prompt),
+                *messages,
+            ])
+            return {
+                "agent_response": response.content,
+                "current_agent": "checkout",
+                "checkout_state": {"active": True},
+            }
+        except Exception as exc:
+            logger.error("checkout_node.failed", error=str(exc))
+            return {"agent_response": f"I'm having trouble with checkout. Please try again. ({exc})"}
+
     graph = StateGraph(AgentState)
 
     # Add nodes
@@ -118,6 +149,7 @@ def build_graph(rag_client: RAGClient, checkpointer=None):
     graph.add_node("style_advisor", _make_agent_wrapper(style_agent, "style_advisor"))
     graph.add_node("gift_finder", _make_agent_wrapper(gift_agent, "gift_finder"))
     graph.add_node("support", _make_agent_wrapper(support_agent, "support"))
+    graph.add_node("checkout", checkout_node)
     graph.add_node("post_process", citations_node)
     graph.add_node("suggestions", suggestions)
 
@@ -142,11 +174,11 @@ def build_graph(rag_client: RAGClient, checkpointer=None):
             "style_advisor": "style_advisor",
             "gift_finder": "gift_finder",
             "support": "support",
-            "checkout": "post_process",  # checkout handled per-request
+            "checkout": "checkout",
         },
     )
 
-    for agent_name in ["shopping", "style_advisor", "gift_finder", "support"]:
+    for agent_name in ["shopping", "style_advisor", "gift_finder", "support", "checkout"]:
         graph.add_edge(agent_name, "post_process")
 
     graph.add_edge("post_process", "suggestions")
