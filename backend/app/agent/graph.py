@@ -3,6 +3,9 @@ Main LangGraph state graph.
 Assembles all agents and nodes into a single compiled graph.
 """
 
+import json
+import re
+
 from langgraph.graph import END, StateGraph
 
 from app.agent.agents.gift_finder import create_gift_finder_agent
@@ -51,7 +54,27 @@ def build_graph(rag_client: RAGClient, checkpointer=None):
     gift_agent = create_gift_finder_agent(primary_llm, rag_client)
     support_agent = create_support_agent(primary_llm, rag_client)
 
-    # Wrapper that invokes a react agent and extracts the response
+    # Extract product cards from tool messages (embedded as <!--PRODUCTS:...-->)
+    _PRODUCTS_RE = re.compile(r"<!--PRODUCTS:(.*?)-->", re.DOTALL)
+
+    def _extract_products_from_messages(messages) -> list[dict]:
+        """Extract product card JSON from tool messages."""
+        all_products = []
+        for msg in messages:
+            if not hasattr(msg, "type"):
+                continue
+            content = msg.content if hasattr(msg, "content") else ""
+            if not content or "<!--PRODUCTS:" not in content:
+                continue
+            for match in _PRODUCTS_RE.findall(content):
+                try:
+                    products = json.loads(match)
+                    all_products.extend(products)
+                except (json.JSONDecodeError, TypeError):
+                    pass
+        return all_products
+
+    # Wrapper that invokes a react agent and extracts the response + product cards
     def _make_agent_wrapper(agent, agent_name: str):
         async def wrapper(state: dict) -> dict:
             messages = state.get("messages", [])
@@ -65,14 +88,24 @@ def build_graph(rag_client: RAGClient, checkpointer=None):
                     error_type=type(exc).__name__,
                 )
                 return {"agent_response": f"I'm having trouble right now. Please try again. ({exc})"}
-            # Extract the last AI message as agent_response
+
             result_messages = result.get("messages", [])
+
+            # Extract last AI message as agent_response
             ai_messages = [
                 m for m in result_messages
                 if hasattr(m, "type") and m.type == "ai" and m.content
             ]
             agent_response = ai_messages[-1].content if ai_messages else ""
-            return {"agent_response": agent_response, "messages": result_messages}
+
+            # Extract product cards from tool messages
+            cited_products = _extract_products_from_messages(result_messages)
+
+            return {
+                "agent_response": agent_response,
+                "messages": result_messages,
+                "cited_products": cited_products,
+            }
 
         return wrapper
 

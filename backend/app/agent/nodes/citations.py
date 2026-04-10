@@ -17,7 +17,9 @@ def citations_node(state: dict) -> dict:
     chunks = state.get("retrieved_chunks", [])
 
     if not agent_response or not chunks:
-        return {"cited_products": [], "agent_response": agent_response}
+        # Don't overwrite cited_products if already populated by agent wrapper
+        existing = state.get("cited_products", [])
+        return {"cited_products": existing, "agent_response": agent_response}
 
     # Build citation map from chunks
     citation_map: dict[str, dict] = {}

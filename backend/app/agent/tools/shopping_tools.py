@@ -6,6 +6,7 @@ Each tool wraps RAG client calls and returns structured results.
 """
 
 import asyncio
+import json
 from langchain_core.tools import tool
 
 from app.clients.rag_client import RAGClient, RetrievedChunk
@@ -49,7 +50,24 @@ def _enrich_query(query: str, args: dict) -> str:
     return " ".join(tokens)
 
 
+def _chunks_to_product_cards(chunks: list[RetrievedChunk]) -> list[dict]:
+    """Convert RAG chunks to product card dicts for the frontend."""
+    cards = []
+    for chunk in chunks:
+        meta = chunk.metadata
+        cards.append({
+            "productId": chunk.product_id,
+            "productName": meta.get("product_name", chunk.product_id),
+            "price": meta.get("price"),
+            "productImageUrl": meta.get("image_url", ""),
+            "productUrl": meta.get("product_url", meta.get("url", "")),
+            "rating": meta.get("rating"),
+        })
+    return cards
+
+
 def _format_chunks_for_agent(chunks: list[RetrievedChunk]) -> str:
+    """Format chunks as context text for the LLM + append JSON product cards."""
     if not chunks:
         return "No products found."
     lines = []
@@ -58,7 +76,10 @@ def _format_chunks_for_agent(chunks: list[RetrievedChunk]) -> str:
         price = f" | ${meta['price']}" if meta.get("price") else ""
         rating = f" | rating {meta['rating']}" if meta.get("rating") else ""
         lines.append(f"[P{i+1}] {chunk.product_id}{price}{rating}\n{chunk.content}")
-    return "\n\n---\n\n".join(lines)
+    context = "\n\n---\n\n".join(lines)
+    # Append product cards as JSON so the wrapper can extract them
+    cards = _chunks_to_product_cards(chunks)
+    return f"{context}\n\n<!--PRODUCTS:{json.dumps(cards)}-->"
 
 
 def create_search_products_tool(rag_client: RAGClient):
