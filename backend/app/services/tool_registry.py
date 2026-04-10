@@ -15,6 +15,7 @@ That's it — no changes to chat_service.py needed.
 import asyncio
 from dataclasses import dataclass
 from app.clients.rag_client import RAGClient, RetrievedChunk
+from app.config.loader import search_config
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -43,8 +44,10 @@ def _enrich_query(query: str, args: dict) -> str:
     return " ".join(tokens)
 
 
-def _deduplicate_chunks(chunks: list[RetrievedChunk], top_k: int = 5) -> list[RetrievedChunk]:
+def _deduplicate_chunks(chunks: list[RetrievedChunk], top_k: int | None = None) -> list[RetrievedChunk]:
     """Remove duplicate products, keeping the highest-similarity chunk per product_id."""
+    if top_k is None:
+        top_k = search_config()["defaults"]["dedup_top_k"]
     seen: set[str] = set()
     result: list[RetrievedChunk] = []
     for chunk in chunks:
@@ -498,14 +501,15 @@ class ToolRegistry:
             foot_type=args.get("foot_type"),
             current_size=args.get("current_size"),
         )
+        sc = search_config()
         chunks: list[RetrievedChunk] = []
         if args.get("brand"):
             chunks = await self._rag.retrieve(
                 query=f"{args['brand']} {args.get('category', 'shoes')}",
                 filters={"brand": args["brand"], "doc_type": "product"},
-                top_k=3,
+                top_k=sc["per_tool"]["size_advice"]["top_k"],
             )
-            chunks = _deduplicate_chunks(chunks, top_k=3)
+            chunks = _deduplicate_chunks(chunks, top_k=sc["per_tool"]["size_advice"]["top_k"])
         return ToolResult(
             tool_name="size_advice",
             success=True,
@@ -537,15 +541,16 @@ class ToolRegistry:
         )
 
     async def _handle_return_request(self, args: dict) -> ToolResult:
+        sc = search_config()
         reason = args.get("reason", "")
         exchange = args.get("exchange", False)
         action = "exchange" if exchange else "return/refund"
         policy_chunks = await self._rag.retrieve(
             query="return policy refund exchange",
             filters={"doc_type": "policy"},
-            top_k=2,
+            top_k=sc["per_tool"]["return_request"]["top_k"],
         )
-        policy_chunks = _deduplicate_chunks(policy_chunks, top_k=2)
+        policy_chunks = _deduplicate_chunks(policy_chunks, top_k=sc["per_tool"]["return_request"]["top_k"])
         return ToolResult(
             tool_name="return_request",
             success=True,
@@ -555,14 +560,15 @@ class ToolRegistry:
         )
 
     async def _handle_policy_faq(self, args: dict) -> ToolResult:
+        sc = search_config()
         topic = args.get("topic", "")
         query = f"{topic} {args.get('query', topic)}"
         chunks = await self._rag.retrieve(
             query=query,
             filters={"doc_type": "policy"},
-            top_k=3,
+            top_k=sc["per_tool"]["policy_faq"]["top_k"],
         )
-        chunks = _deduplicate_chunks(chunks, top_k=3)
+        chunks = _deduplicate_chunks(chunks, top_k=sc["per_tool"]["policy_faq"]["top_k"])
         return ToolResult(
             tool_name="policy_faq",
             success=True,
@@ -576,6 +582,7 @@ class ToolRegistry:
         )
 
     async def _handle_stock_check(self, args: dict) -> ToolResult:
+        sc = search_config()
         name  = args.get("product_name", "")
         query = name
         if args.get("color"):
@@ -585,9 +592,9 @@ class ToolRegistry:
         chunks = await self._rag.retrieve(
             query=query,
             filters={"doc_type": "product", "in_stock": True},
-            top_k=3,
+            top_k=sc["per_tool"]["stock_check"]["top_k"],
         )
-        chunks = _deduplicate_chunks(chunks, top_k=3)
+        chunks = _deduplicate_chunks(chunks, top_k=sc["per_tool"]["stock_check"]["top_k"])
         return ToolResult(
             tool_name="stock_check",
             success=True,
@@ -663,13 +670,14 @@ class ToolRegistry:
                 summary="Could not retrieve order history: customer not identified.",
             )
 
+        sc = search_config()
         chunks = await self._rag.retrieve(
             query=query,
             filters={
                 "document_type": "ORDER",
                 "customer_id": customer_id,
             },
-            top_k=5,
+            top_k=sc["per_tool"]["order_history_lookup"]["top_k"],
         )
         return ToolResult(
             tool_name="order_history_lookup",

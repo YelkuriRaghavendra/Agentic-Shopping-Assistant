@@ -1,98 +1,47 @@
 {
   "_comment": "Style advisor knowledge base. Edit without touching Python.",
   "colour_pairings": {
-    "black": {
-      "pairs": ["white", "grey", "red", "navy", "beige", "gold"],
-      "explanation": "Black is versatile and pairs with almost everything",
-      "tip": "Use black as a grounding neutral"
-    },
-    "white": {
-      "pairs": ["navy", "black", "beige", "pastel blue", "grey"],
-      "explanation": "White is clean and fresh, pairs well with both bold and soft tones",
-      "tip": "White sneakers work with any casual outfit"
-    },
-    "navy": {
-      "pairs": ["white", "beige", "grey", "burgundy", "light blue"],
-      "explanation": "Navy is a sophisticated neutral that replaces black in softer looks",
-      "tip": "Navy and white is a classic, fail-safe combination"
-    },
-    "red": {
-      "pairs": ["black", "white", "navy", "grey", "denim blue"],
-      "explanation": "Red is a statement colour — pair with neutrals to balance",
-      "tip": "A red shoe can elevate an all-black or all-white outfit"
-    },
-    "blue": {
-      "pairs": ["white", "grey", "beige", "brown", "navy"],
-      "explanation": "Blue tones work well with earth tones and neutrals",
-      "tip": "Light blue pairs beautifully with tan or beige shoes"
-    },
-    "green": {
-      "pairs": ["white", "beige", "brown", "navy", "grey"],
-      "explanation": "Green pairs naturally with earth tones",
-      "tip": "Olive green is especially versatile for casual looks"
-    },
-    "grey": {
-      "pairs": ["white", "black", "navy", "pink", "burgundy"],
-      "explanation": "Grey is the ultimate neutral — works with warm and cool tones",
-      "tip": "Grey shoes are as versatile as black but feel more relaxed"
-    },
-    "brown": {
-      "pairs": ["beige", "navy", "green", "white", "burgundy"],
-      "explanation": "Brown is warm and earthy — avoid pairing with black",
-      "tip": "Brown leather shoes pair perfectly with denim"
-    },
-    "beige": {
-      "pairs": ["white", "navy", "brown", "olive", "light blue"],
-      "explanation": "Beige is a warm neutral that softens any outfit",
-      "tip": "Beige sneakers are trending — they go with everything"
-    },
-    "pink": {
-      "pairs": ["grey", "white", "navy", "black", "beige"],
-      "explanation": "Pink adds a playful touch — balance with neutrals",
-      "tip": "Dusty pink is more wearable than hot pink for everyday"
-    },
-    "purple": {
-      "pairs": ["white", "grey", "black", "beige", "gold"],
-      "explanation": "Purple is bold — keep the rest of the outfit simple",
-      "tip": "Deep purple pairs well with grey for a sophisticated look"
-    }
+    "blue":   {"pairs_with": ["navy", "white", "grey", "beige", "camel", "black", "khaki", "olive"],   "avoid": ["bright blue", "green", "purple", "brown"],   "notes": {"navy": "tonal and sophisticated", "white": "classic clean contrast", "grey": "safe and versatile", "beige": "warm casual contrast"}},
+    "white":  {"pairs_with": ["navy", "black", "grey", "beige", "camel", "olive", "red"],              "avoid": ["cream", "off-white"],                         "notes": {}},
+    "black":  {"pairs_with": ["white", "grey", "beige", "camel", "red", "navy", "olive"],              "avoid": ["dark navy", "dark brown"],                    "notes": {"white": "classic high contrast", "camel": "sophisticated warm contrast"}},
+    "grey":   {"pairs_with": ["white", "black", "navy", "camel", "red"],                               "avoid": [],                                             "notes": {}},
+    "red":    {"pairs_with": ["white", "black", "navy", "grey", "beige"],                              "avoid": ["orange", "pink", "bright green", "purple"],   "notes": {"white": "bold and classic", "navy": "rich and sophisticated"}},
+    "green":  {"pairs_with": ["white", "beige", "camel", "brown", "navy", "grey"],                    "avoid": ["red", "blue", "purple"],                      "notes": {}},
+    "yellow": {"pairs_with": ["white", "grey", "navy", "black"],                                       "avoid": ["orange", "red", "green"],                     "notes": {}},
+    "beige":  {"pairs_with": ["white", "navy", "black", "brown", "camel", "olive"],                   "avoid": ["cream", "light yellow"],                      "notes": {}},
+    "navy":   {"pairs_with": ["white", "light blue", "beige", "grey", "camel", "red"],                "avoid": ["black"],                                      "notes": {"white": "classic nautical"}},
+    "pink":   {"pairs_with": ["white", "grey", "navy", "black", "beige"],                             "avoid": ["red", "orange", "bright purple"],             "notes": {}},
+    "brown":  {"pairs_with": ["beige", "white", "camel", "olive", "navy"],                            "avoid": ["black", "grey"],                              "notes": {}}
   },
   "colour_aliases": {
-    "tan": "beige",
-    "cream": "beige",
-    "khaki": "beige",
-    "charcoal": "grey",
-    "silver": "grey",
-    "maroon": "burgundy",
-    "wine": "burgundy",
-    "denim": "blue",
-    "sky blue": "blue",
-    "olive": "green",
-    "forest": "green",
-    "coral": "pink",
-    "rose": "pink",
-    "gold": "beige",
-    "orange": "brown"
+    "tan": "beige", "khaki": "beige", "cream": "beige",
+    "off-white": "white", "ivory": "white",
+    "charcoal": "grey", "silver": "grey",
+    "denim": "blue", "royal": "blue", "cobalt": "blue", "sky": "blue",
+    "maroon": "red", "burgundy": "red", "wine": "red",
+    "teal": "green", "olive": "green", "emerald": "green",
+    "coral": "orange", "gold": "yellow", "mustard": "yellow",
+    "purple": "pink", "violet": "pink", "lilac": "pink"
   },
   "brand_size_notes": {
-    "nike": "Nike tends to run slightly narrow. If you have wide feet, consider going half a size up.",
-    "adidas": "Adidas runs true to size for most models. Boost models may feel snug initially.",
-    "new balance": "New Balance offers wide (2E) and extra-wide (4E) options. Great for wider feet.",
-    "puma": "Puma generally runs true to size. Some models run slightly small.",
-    "reebok": "Reebok runs true to size. Classic Leather runs slightly large.",
-    "asics": "ASICS tends to run true to size. Gel models offer good arch support.",
-    "brooks": "Brooks runs true to size. Known for excellent support and cushioning.",
-    "hoka": "HOKA runs half a size small for many. Consider sizing up.",
-    "converse": "Converse Chuck Taylors run about a full size large. Size down.",
-    "vans": "Vans runs true to size for most models.",
-    "saucony": "Saucony runs true to size. Comfortable out of the box."
+    "nike":         "Nike runs true to size. Wide feet should go half a size up.",
+    "adidas":       "Adidas runs slightly narrow. Wide feet should size up half a size.",
+    "new balance":  "New Balance offers wide widths (2E, 4E). True to size in standard.",
+    "asics":        "Asics runs true to size. Good arch support for overpronation.",
+    "brooks":       "Brooks runs true to size. Excellent for wide feet.",
+    "hoka":         "Hoka runs true to size with a roomy toe box.",
+    "converse":     "Converse runs large — size down half a size.",
+    "vans":         "Vans run true to size for standard width.",
+    "puma":         "Puma runs slightly small — size up half if between sizes.",
+    "salomon":      "Salomon trail shoes run true. Snug fit by design.",
+    "timberland":   "Timberland boots run half a size large."
   },
   "foot_type_advice": {
-    "wide": "Look for brands that offer wide options: New Balance (2E/4E), ASICS, Brooks. Avoid narrow brands like Converse.",
-    "narrow": "Nike and Adidas tend to run narrower. Avoid New Balance wide models.",
-    "flat": "Look for stability shoes with arch support: Brooks Adrenaline, ASICS Gel-Kayano, New Balance 860.",
-    "high arch": "Neutral cushioned shoes work best: HOKA Clifton, Brooks Ghost, ASICS Gel-Nimbus.",
-    "normal": "Most standard-width shoes will work well. Focus on the activity type."
+    "wide":          "Look for New Balance (2E/4E widths), Brooks, or ASICS. Size up half in narrow brands like Adidas.",
+    "narrow":        "Adidas, Saucony, and Mizuno tend to run narrower.",
+    "flat":          "Look for motion control shoes — Brooks Adrenaline, New Balance 860, ASICS Gel-Kayano.",
+    "high arch":     "Cushioned neutral shoes work best — HOKA, Brooks Ghost, New Balance Fresh Foam.",
+    "overpronation": "Stability shoes are ideal — ASICS GT series, Brooks Adrenaline, New Balance 860."
   },
   "top_color_pairs_count": 3
 }
