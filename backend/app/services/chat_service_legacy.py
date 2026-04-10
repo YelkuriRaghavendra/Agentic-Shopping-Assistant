@@ -36,7 +36,6 @@ from collections.abc import AsyncIterator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dto.chat_dto import ChatRequest, ChatResponse, ProductCardDTO
-from app.clients.llm_client import LLMClient, ToolCall, SuggestionItem
 from app.clients.rag_client import RAGClient
 from app.clients.commerce_client import CommerceClient
 from app.config.loader import business_rules, prompts
@@ -61,7 +60,6 @@ from app.services.citation_service import CitationService
 from app.services.feature_flag_service import FeatureFlagService, COMMERCE_INTENTS
 from app.services.guardrails_service import GuardrailsService
 from app.services.memory_service import MemoryService, SlotState, ConversationHistory, PersonNote
-from app.services.prompt_builder_service import PromptBuilderService
 from app.services.rate_limiter_service import RateLimiterService
 from app.services.tool_registry import ToolRegistry, TOOL_DEFINITIONS
 from app.services.checkout_tools import (
@@ -72,8 +70,43 @@ from app.services.stripe_customer_service import StripeCustomerService
 from app.services.skills.skill_registry import SkillRegistry
 from app.services.skills.base_skill import SkillContext
 from app.services.skills.prompts import TOOL_SELECTION_PROMPT
-from app.agent.skill_loader import skill_loader
 from app.core.logging import get_logger
+
+# ---------------------------------------------------------------------------
+# Stub types for deleted modules (legacy file — kept for reference only,
+# not used in production since ChatServiceV2 replaced this service).
+# ---------------------------------------------------------------------------
+from typing import Any as _Any
+
+
+class LLMClient:  # type: ignore[no-redef]
+    """Stub — llm_client.py has been deleted."""
+    pass
+
+
+class ToolCall:  # type: ignore[no-redef]
+    """Stub — removed with llm_client.py."""
+    pass
+
+
+class SuggestionItem:  # type: ignore[no-redef]
+    """Stub — removed with llm_client.py."""
+    pass
+
+
+class PromptBuilderService:  # type: ignore[no-redef]
+    """Stub — prompt_builder_service.py has been deleted."""
+    pass
+
+
+class _SkillLoader:
+    """Stub — skill_loader.py has been deleted."""
+    def load_agent(self, name: str) -> str: return ""
+    def load_skill_for_prompt(self, name: str) -> str: raise FileNotFoundError(name)
+
+
+skill_loader = _SkillLoader()
+# ---------------------------------------------------------------------------
 
 settings = get_settings()
 logger = get_logger(__name__)

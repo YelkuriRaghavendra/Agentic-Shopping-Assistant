@@ -41,19 +41,13 @@ from app.db.repositories import (
     SessionRepository,
     MessageRepository,
 )
-from app.clients.llm_client import LLMClient
 from app.clients.rag_client import RAGClient
 from app.clients.commerce_client import CommerceClient
-from app.services.chat_service import ChatService
 from app.services.chat_service_v2 import ChatServiceV2
 from app.services.feature_flag_service import FeatureFlagService
 from app.services.guardrails_service import GuardrailsService
-from app.services.memory_service import MemoryService
-from app.services.prompt_builder_service import PromptBuilderService
 from app.services.citation_service import CitationService
 from app.services.rate_limiter_service import RateLimiterService
-from app.services.tool_registry import ToolRegistry
-from app.services.skills.skill_registry import SkillRegistry
 from app.agent.graph import build_graph
 
 import uuid
@@ -61,15 +55,12 @@ import uuid
 logger = get_logger(__name__)
 
 # Module-level singletons for stateless services
-_llm_client    = LLMClient()
 _rag_client    = RAGClient()
 _commerce      = CommerceClient()
 _feature_flags = FeatureFlagService()
 _rate_limiter  = RateLimiterService()
 _guardrails    = GuardrailsService()
-_prompt        = PromptBuilderService()
 _citations     = CitationService()
-_skills        = SkillRegistry()
 
 # Lazy-initialised LangGraph graph (avoids import-time LLM creation)
 _graph = None
@@ -93,28 +84,6 @@ def _make_chat_service(db: AsyncSession) -> ChatServiceV2:
         rate_limiter=_rate_limiter,
     )
 
-
-def _make_chat_service_v1(db: AsyncSession) -> ChatService:
-    """
-    Legacy factory: builds ChatService v1 with all dependencies wired up.
-    Kept for rollback; will be removed in Task 21.
-    """
-    session_repo = SessionRepository(db)
-    customer_repo = CustomerRepository(db)
-    return ChatService(
-        db=db,
-        llm_client=_llm_client,
-        rag_client=_rag_client,
-        rate_limiter=_rate_limiter,
-        guardrails=_guardrails,
-        memory=MemoryService(session_repo, customer_repo),
-        prompt=_prompt,
-        citations=_citations,
-        tools=ToolRegistry(_rag_client),
-        skills=_skills,
-        commerce=_commerce,
-        feature_flags=_feature_flags,
-    )
 
 
 def _http_status_for(exc: ChatServiceError) -> int:

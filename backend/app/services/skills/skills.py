@@ -53,13 +53,8 @@ class StylistSkill(SkillBase):
         )
 
     def build_prompt_addon(self, ctx: SkillContext) -> SkillResult:
-        from app.agent.skill_loader import skill_loader
-        try:
-            skill_content = skill_loader.load_skill_for_prompt("outfit-pairing")
-        except FileNotFoundError:
-            skill_content = SKILL_STYLIST_PROMPT  # fallback to inline prompt
         return SkillResult(
-            prompt_addon=skill_content,
+            prompt_addon=SKILL_STYLIST_PROMPT,
             metadata={"skill": self.name},
         )
 
@@ -90,13 +85,7 @@ class GiftAdvisorSkill(SkillBase):
         )
 
     def build_prompt_addon(self, ctx: SkillContext) -> SkillResult:
-        from app.agent.skill_loader import skill_loader
-        try:
-            skill_content = skill_loader.load_skill_for_prompt("gift-finding")
-        except FileNotFoundError:
-            skill_content = SKILL_GIFT_ADVISOR_PROMPT
-
-        addon = skill_content
+        addon = SKILL_GIFT_ADVISOR_PROMPT
         recipient = self._extract_recipient(ctx.message)
         if recipient:
             addon += f"\nRECIPIENT: {recipient}. Tailor all recommendations to them."
@@ -140,13 +129,7 @@ class SizeExpertSkill(SkillBase):
         )
 
     def build_prompt_addon(self, ctx: SkillContext) -> SkillResult:
-        from app.agent.skill_loader import skill_loader
-        try:
-            skill_content = skill_loader.load_skill_for_prompt("size-fitting")
-        except FileNotFoundError:
-            skill_content = SKILL_SIZE_EXPERT_PROMPT
-
-        addon = skill_content
+        addon = SKILL_SIZE_EXPERT_PROMPT
         if ctx.slots.brand and ctx.slots.brand.lower() != "any":
             addon += f"\nBRAND FOCUS: {ctx.slots.brand}. Include specific sizing notes for this brand."
 
@@ -199,12 +182,6 @@ class ReturningCustomerSkill(SkillBase):
         )
 
     def build_prompt_addon(self, ctx: SkillContext) -> SkillResult:
-        from app.agent.skill_loader import skill_loader
-        try:
-            skill_content = skill_loader.load_skill_for_prompt("returning-customer")
-        except FileNotFoundError:
-            skill_content = SKILL_RETURNING_CUSTOMER_PROMPT
-
         profile  = ctx.customer_profile
         brands   = profile.get("preferred_brands", [])
         sizes    = profile.get("usual_sizes", {})
@@ -222,7 +199,7 @@ class ReturningCustomerSkill(SkillBase):
             context_lines.append(f"- Usually shops for: {profile['favourite_category']}")
 
         profile_summary = "\n".join(context_lines)
-        addon = skill_content + f"\nKNOWN CUSTOMER DATA:\n{profile_summary}"
+        addon = SKILL_RETURNING_CUSTOMER_PROMPT + f"\nKNOWN CUSTOMER DATA:\n{profile_summary}"
 
         return SkillResult(
             prompt_addon=addon,
@@ -269,17 +246,11 @@ class EmpathySkill(SkillBase):
         )
 
     def build_prompt_addon(self, ctx: SkillContext) -> SkillResult:
-        from app.agent.skill_loader import skill_loader
-        try:
-            skill_content = skill_loader.load_skill_for_prompt("customer-empathy")
-        except FileNotFoundError:
-            skill_content = SKILL_EMPATHY_PROMPT
-
         escalation_signals = self._ESCALATION_SIGNALS
         msg = ctx.message.lower()
         wants_human = any(s in msg for s in escalation_signals)
 
-        addon = skill_content
+        addon = SKILL_EMPATHY_PROMPT
         if wants_human:
             addon += (
                 "\nCRITICAL: Customer has asked to speak to a human. "
