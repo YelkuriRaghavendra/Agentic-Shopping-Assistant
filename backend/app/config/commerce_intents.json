@@ -1,0 +1,76 @@
+{
+  "_comment": "Commerce intent classification. Edit keywords without touching Python.",
+  "intent_keywords": {
+    "checkout_initiate": [
+      "checkout", "check out", "place order", "place my order", "buy now",
+      "proceed to checkout", "proceed to payment", "proceed with payment",
+      "proceed with purchase", "place the order",
+      "purchase this", "purchase it", "buy this", "buy it",
+      "complete my purchase", "complete the purchase", "complete purchase",
+      "confirm my purchase", "confirm purchase", "confirm the purchase",
+      "confirm my order", "confirm order",
+      "finalize", "finalise", "make the purchase",
+      "pay for this", "payment for the", "i want to pay for",
+      "i want to buy now", "i'd like to buy now", "buy it now", "purchase it now",
+      "order it now", "buy sneakers now", "buy shoes now"
+    ],
+    "add_to_cart": [
+      "add to cart", "add to my cart", "put in cart", "put it in",
+      "add it", "add this", "i want to add", "add the"
+    ],
+    "remove_from_cart": [
+      "remove from cart", "take out of cart", "delete from cart",
+      "remove it", "take it out"
+    ],
+    "view_cart": [
+      "view cart", "show cart", "what's in my cart", "my cart",
+      "see my cart", "show my cart"
+    ],
+    "order_status": [
+      "order status", "where is my order", "track my order", "order #",
+      "order number", "status of my order", "where's my order"
+    ],
+    "order_history": [
+      "order history", "my orders", "past orders", "previous orders",
+      "all orders", "show my orders", "show orders", "see my orders"
+    ],
+    "cancel_order": [
+      "cancel order", "cancel my order", "cancel purchase", "cancel the order"
+    ]
+  },
+  "required_slots": {
+    "add_to_cart": ["product_id", "quantity"],
+    "remove_from_cart": ["product_id"],
+    "view_cart": [],
+    "checkout_initiate": [],
+    "order_status": ["order_id"],
+    "order_history": [],
+    "cancel_order": ["order_id"]
+  },
+  "slot_prompts": {
+    "product_id": "Which product would you like? Could you describe it or give me the product name?",
+    "quantity": "How many would you like to add?",
+    "order_id": "Could you share your order number? You can find it in your confirmation email.",
+    "line_items": "Your cart appears to be empty. Would you like to add some items first?"
+  },
+  "purchase_intent_phrases": [
+    "i want to buy", "i'd like to buy", "i would like to buy",
+    "i want to purchase", "i'd like to purchase", "i would like to purchase",
+    "i want to order", "i'd like to order", "i would like to order"
+  ],
+  "browse_category_words": [
+    "shoes", "shoe", "sneakers", "boots", "sandals", "slippers",
+    "shirts", "shirt", "pants", "jeans", "jacket", "jackets",
+    "clothes", "clothing", "apparel", "dress", "dresses",
+    "something", "anything", "some", "a few", "options"
+  ],
+  "self_signals": [
+    "myself", "for me", "for myself", "me ", "i need", "i want",
+    "i'm looking", "im looking", "my size"
+  ],
+  "other_signals": [
+    "someone", "someone else", "gift", "for my friend", "for my dad",
+    "for my mom", "for my mum", "for my wife", "for my husband",
+    "for my partner", "for him", "for her"
+  ]
+}

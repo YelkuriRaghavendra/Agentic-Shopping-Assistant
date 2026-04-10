@@ -1,0 +1,27 @@
+{
+  "_comment": "Memory, conversation history, and suggestion settings.",
+  "history": {
+    "token_budget": 800,
+    "max_turns": 6,
+    "min_turns": 2
+  },
+  "session": {
+    "title_generation_threshold": 4,
+    "title_generation_max_tokens": 20,
+    "title_generation_message_limit": 4,
+    "title_generation_temperature": 0.3
+  },
+  "profile": {
+    "max_known_people": 10,
+    "max_shown_products_in_prompt": 8,
+    "max_brands_in_prompt": 3,
+    "max_order_results": 5
+  },
+  "suggestions": {
+    "max_count": 4,
+    "label_max_length": 35,
+    "product_name_max_length": 25,
+    "budget_cheaper_multiplier": 0.5,
+    "budget_higher_multiplier": 1.5
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "_comment": "RAG search configuration per tool. Edit without touching Python.",
+  "defaults": {
+    "top_k": 5,
+    "dedup_top_k": 5
+  },
+  "per_tool": {
+    "search_products": { "top_k": 5 },
+    "compare_products": { "top_k_per_product": 2 },
+    "size_advice": { "top_k": 3 },
+    "return_request": { "top_k": 2 },
+    "policy_faq": { "top_k": 3 },
+    "stock_check": { "top_k": 3 },
+    "order_history_lookup": { "top_k": 5 },
+    "gift_search": { "top_k": 5 },
+    "outfit_pairing": { "top_k": 5 }
+  }
+}

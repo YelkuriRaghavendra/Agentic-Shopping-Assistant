@@ -1,0 +1,6 @@
+{
+  "_comment": "SSE streaming configuration.",
+  "word_delay_seconds": 0.02,
+  "heartbeat_interval_seconds": 5,
+  "stuck_request_timeout_ms": 30000
+}

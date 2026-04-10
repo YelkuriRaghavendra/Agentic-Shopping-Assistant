@@ -1,0 +1,43 @@
+{
+  "_comment": "Guardrail patterns and responses. Edit without touching Python.",
+  "injection_patterns": [
+    "ignore previous instructions", "ignore your instructions",
+    "ignore all instructions", "you are now", "act as", "jailbreak",
+    "disregard your", "forget your instructions", "new instructions:",
+    "system prompt", "do whatever i say", "override your"
+  ],
+  "harmful_patterns": ["\\b(kill|murder|bomb|attack|weapon|exploit|hack)\\b"],
+  "off_topic_signals": [
+    "\\b(write|code|program|script|essay|poem|story|song)\\b",
+    "\\b(math|calcul|equation|solve|formula)\\b",
+    "\\b(politic|election|president|minister|government)\\b",
+    "\\b(recipe|cook|ingredient|calories)\\b"
+  ],
+  "shopping_signals": [
+    "\\b(buy|price|deliver|ship|order|return|shoe|sneaker|product|brand|size|cart|checkout)\\b"
+  ],
+  "pii_patterns": {
+    "credit_card": "\\b(?:\\d[ -]*?){13,16}\\b",
+    "password": "(?i)(password|passwd|pwd)\\s*[:=]\\s*\\S+"
+  },
+  "frustration_signals": [
+    "frustrated", "angry", "annoyed", "terrible", "worst", "hate", "unacceptable"
+  ],
+  "intent_keywords": {
+    "product_search": ["find", "looking for", "search", "show me", "any", "recommend"],
+    "outfit_pairing": ["match", "pair", "goes with", "complement", "outfit", "combine"],
+    "gift_finding": ["gift", "present", "birthday", "for my", "for him", "for her"],
+    "size_advice": ["size", "fit", "sizing", "wide feet", "narrow", "true to size"],
+    "order_lookup": ["order", "tracking", "shipped", "delivery status"],
+    "return_request": ["return", "refund", "exchange", "wrong size", "damaged"],
+    "policy_faq": ["policy", "shipping time", "warranty", "how long"],
+    "comparison": ["compare", "vs", "versus", "better", "difference"],
+    "general": ["hello", "hi", "hey", "thanks", "thank you", "bye"]
+  },
+  "responses": {
+    "injection_blocked": "I'm here to help you with shopping and orders. What can I find for you today?",
+    "harmful_blocked": "I can only help with shopping-related questions. Please contact our support team if you need further assistance.",
+    "off_topic": "I'm your shopping assistant — I can help with products, orders, returns, and more. What can I help you find?",
+    "generic_blocked": "I'm here to help with shopping. How can I assist?"
+  }
+}

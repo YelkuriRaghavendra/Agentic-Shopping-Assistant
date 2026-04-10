@@ -1,0 +1,45 @@
+{
+  "_comment": "Agent configuration. Edit without touching Python.",
+  "supervisor": {
+    "model_tier": "cheap",
+    "max_tokens": 256,
+    "prompt_file": "agent_prompts/supervisor.md"
+  },
+  "shopping": {
+    "model_tier": "primary",
+    "max_tokens": 1024,
+    "prompt_file": "agent_prompts/shopping.md",
+    "tools": ["search_products", "compare_products", "stock_check"]
+  },
+  "style_advisor": {
+    "model_tier": "primary",
+    "max_tokens": 1024,
+    "prompt_file": "agent_prompts/style_advisor.md",
+    "tools": ["outfit_pairing", "size_advice", "search_products"]
+  },
+  "gift_finder": {
+    "model_tier": "primary",
+    "max_tokens": 1024,
+    "prompt_file": "agent_prompts/gift_finder.md",
+    "tools": ["gift_search", "search_products"]
+  },
+  "support": {
+    "model_tier": "primary",
+    "max_tokens": 1024,
+    "prompt_file": "agent_prompts/support.md",
+    "tools": ["order_lookup", "order_history_lookup", "return_request", "policy_faq", "escalate_to_human"]
+  },
+  "checkout": {
+    "model_tier": "primary",
+    "max_tokens": 1024,
+    "prompt_file": "agent_prompts/checkout.md",
+    "multi_tool_loop": true,
+    "max_tool_calls_per_turn": 5,
+    "tools": ["place_order", "save_address", "request_payment_setup", "request_address_form", "update_cart", "exit_checkout"]
+  },
+  "suggestions": {
+    "model_tier": "cheap",
+    "max_tokens": 256,
+    "prompt_file": "agent_prompts/suggestions.md"
+  }
+}
