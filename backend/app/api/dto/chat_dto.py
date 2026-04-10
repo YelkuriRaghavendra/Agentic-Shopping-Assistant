@@ -129,6 +129,7 @@ class ChatResponse(BaseModel):
     checkout_data:         dict | None = None
     cart_data:             dict | None = None
     order_history_data:    dict | None = None
+    checkout_action:       dict | None = None
 
 
 class SessionResponse(BaseModel):

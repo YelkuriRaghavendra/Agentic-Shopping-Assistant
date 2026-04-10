@@ -1,7 +1,6 @@
 "use client";
 
-import { Suspense, useState, useEffect } from "react";
-import { useSearchParams } from "next/navigation";
+import { Suspense, useState } from "react";
 import useCustomer from "@/hooks/useCustomer";
 import { useSessions } from "@/hooks/useSessions";
 import { useChat } from "@/hooks/useChat";
@@ -25,69 +24,6 @@ function ChatPageInner() {
   const sessions = useSessions(customer.customerId);
   const chat = useChat(customer.customerId, sessions.activeSessionId);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const searchParams = useSearchParams();
-
-  // When Stripe redirects back with ?payment=success&session=..., restore chat session
-  const [pendingCheckoutId, setPendingCheckoutId] = useState<string | null>(null);
-
-  useEffect(() => {
-    const paymentStatus = searchParams.get("payment");
-    const checkoutSessionId = searchParams.get("session");
-    if (paymentStatus !== "success" || !checkoutSessionId) return;
-
-    // Restore the chat session from before payment
-    const chatSessionId = localStorage.getItem("pending_payment_chat_session");
-    localStorage.removeItem("pending_payment_chat_session");
-
-    const url = new URL(window.location.href);
-    url.searchParams.delete("payment");
-    url.searchParams.delete("session");
-    if (chatSessionId) {
-      url.searchParams.set("session", chatSessionId);
-      sessions.selectSession(chatSessionId);
-    }
-    window.history.replaceState({}, "", url.toString());
-
-    // Save checkout ID — order card will be added AFTER history loads
-    setPendingCheckoutId(checkoutSessionId);
-  // Only run on mount
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // After history finishes loading, append order card for Stripe redirect
-  useEffect(() => {
-    if (!pendingCheckoutId || chat.isHistoryLoading) return;
-    setPendingCheckoutId(null);
-
-    (async () => {
-      try {
-        const res = await fetch(
-          `${process.env.NEXT_PUBLIC_COMMERCE_BASE_URL ?? "http://localhost:3001"}/commerce/checkout-sessions/${pendingCheckoutId}`
-        );
-        if (!res.ok) return;
-        const session = await res.json();
-        const lineItems = (session.lineItemsSnapshot ?? []).map((li: any) => ({
-          item: { id: li.item?.id ?? "", title: li.item?.title ?? "", price: li.item?.price ?? 0 },
-          quantity: li.quantity ?? 1,
-        }));
-        const totals = session.totalsSnapshot ?? {};
-        chat.addOrderConfirmation({
-          order_id: session.ucpOrderId ?? pendingCheckoutId,
-          line_items: lineItems,
-          totals: {
-            subtotal_cents: totals.subtotalCents ?? totals.subtotal_cents ?? 0,
-            tax_cents: totals.taxCents ?? totals.tax_cents ?? 0,
-            grand_total_cents: totals.grandTotalCents ?? totals.grand_total_cents ?? 0,
-          },
-          status: "processing",
-        });
-      } catch {
-        // User can check order history
-      }
-    })();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingCheckoutId, chat.isHistoryLoading]);
-
   return (
     <ErrorBoundary>
     <main className="flex h-screen w-full overflow-hidden" style={{ background: theme.bg.feed }}>
@@ -176,6 +112,7 @@ function ChatPageInner() {
           customerId={customer.customerId}
           updateProfile={customer.updateProfile}
           addOrderConfirmation={chat.addOrderConfirmation}
+          sendCheckoutAction={chat.sendCheckoutAction}
         />
       </div>
 

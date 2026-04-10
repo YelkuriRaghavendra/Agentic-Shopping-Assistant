@@ -63,9 +63,15 @@ from app.services.memory_service import MemoryService, SlotState, ConversationHi
 from app.services.prompt_builder_service import PromptBuilderService
 from app.services.rate_limiter_service import RateLimiterService
 from app.services.tool_registry import ToolRegistry, TOOL_DEFINITIONS
+from app.services.checkout_tools import (
+    CheckoutToolRegistry,
+    CHECKOUT_TOOL_DEFINITIONS,
+)
+from app.services.stripe_customer_service import StripeCustomerService
 from app.services.skills.skill_registry import SkillRegistry
 from app.services.skills.base_skill import SkillContext
 from app.services.skills.prompts import TOOL_SELECTION_PROMPT
+from app.agent.skill_loader import skill_loader
 from app.core.logging import get_logger
 
 settings = get_settings()
@@ -304,8 +310,61 @@ class ChatService:
         # "my friend who runs" in session 1 → remembered in session 2
         people = self._memory.extract_people_from_message(request.message)
 
-        # ── 7b. Commerce intent routing (feature-flag gated) ─────────────
+        # ── 7b. Checkout agent mode ─────────────────────────────────────
+        if self._memory.get_active_agent(session) == "checkout":
+            checkout_response = await self._handle_checkout_mode(
+                session=session,
+                request=request,
+                customer_profile=customer_profile,
+                conversation=conversation,
+                t_start=t_start,
+            )
+            if checkout_response is not None:
+                return checkout_response
+
+        # ── 7c. Commerce intent routing (feature-flag gated) ─────────────
         commerce_intent = _classify_commerce_intent(request.message)
+
+        # Enter checkout agent mode for checkout_initiate
+        if commerce_intent == "checkout_initiate":
+            # Create/get checkout session first
+            commerce_slots = await self._extract_commerce_slots(
+                message=request.message, intent=commerce_intent, session=session,
+            )
+            customer_id_str = str(session.customer_id) if session.customer_id else None
+            try:
+                service_response = await self._dispatch_commerce_intent(
+                    intent=commerce_intent, slots=commerce_slots,
+                    customer_id=customer_id_str or "",
+                    request_id=str(session.session_id), session=session,
+                )
+                if service_response.success and service_response.data:
+                    cs_id = (
+                        service_response.data.get("sessionId")
+                        or service_response.data.get("session_id", "")
+                    )
+                    if session.context is None:
+                        session.context = {}
+                    session.context["checkout_session_id"] = cs_id
+            except Exception as exc:
+                logger.warning("chat.checkout_session_create_failed", error=str(exc))
+
+            await self._memory.set_active_agent(session, "checkout")
+            # Rewrite message for the checkout agent — it should see a checkout
+            # request, not the raw product query that triggered checkout_initiate
+            checkout_request = ChatRequest(
+                message="Customer wants to checkout. Present the order summary.",
+                customer_id=request.customer_id,
+                session_id=request.session_id,
+                channel=request.channel,
+            )
+            return await self._handle_checkout_mode(
+                session=session, request=checkout_request,
+                customer_profile=customer_profile,
+                conversation=conversation,
+                t_start=t_start,
+            )
+
         if commerce_intent:
             commerce_response = await self._handle_commerce_intent(
                 commerce_intent=commerce_intent,
@@ -744,7 +803,82 @@ class ChatService:
         slots = self._extract_slots(request.message, slots)
         people = self._memory.extract_people_from_message(request.message)
 
+        # ── Checkout agent mode (streaming) ────────────────────────────
+        if self._memory.get_active_agent(session) == "checkout":
+            checkout_resp = await self._handle_checkout_mode(
+                session=session, request=request,
+                customer_profile=customer_profile,
+                conversation=conversation, t_start=t_start,
+            )
+            if checkout_resp is not None:
+                answer = checkout_resp.answer or ""
+                events = await _collect_stream_words(answer)
+                done_event: dict = {
+                    "type": "done",
+                    "message_id": str(checkout_resp.message_id) if checkout_resp.message_id else "",
+                    "session_id": str(session.session_id),
+                    "answer_html": answer,
+                    "cited_products": [],
+                    "suggestions": [],
+                }
+                if checkout_resp.checkout_action:
+                    done_event["checkout_action"] = checkout_resp.checkout_action
+                events.append(_sse(done_event))
+                return {"early_return": True, "events": events}
+
         commerce_intent = _classify_commerce_intent(request.message)
+
+        # Enter checkout mode for checkout_initiate (streaming path)
+        if commerce_intent == "checkout_initiate":
+            commerce_slots = await self._extract_commerce_slots(
+                message=request.message, intent=commerce_intent, session=session,
+            )
+            customer_id_str = str(session.customer_id) if session.customer_id else None
+            try:
+                service_response = await self._dispatch_commerce_intent(
+                    intent=commerce_intent, slots=commerce_slots,
+                    customer_id=customer_id_str or "",
+                    request_id=str(session.session_id), session=session,
+                )
+                if service_response.success and service_response.data:
+                    cs_id = (
+                        service_response.data.get("sessionId")
+                        or service_response.data.get("session_id", "")
+                    )
+                    if session.context is None:
+                        session.context = {}
+                    session.context["checkout_session_id"] = cs_id
+            except Exception as exc:
+                logger.warning("chat.checkout_session_create_failed", error=str(exc))
+
+            await self._memory.set_active_agent(session, "checkout")
+            checkout_request = ChatRequest(
+                message="Customer wants to checkout. Present the order summary.",
+                customer_id=request.customer_id,
+                session_id=request.session_id,
+                channel=request.channel,
+            )
+            checkout_resp = await self._handle_checkout_mode(
+                session=session, request=checkout_request,
+                customer_profile=customer_profile,
+                conversation=conversation, t_start=t_start,
+            )
+            if checkout_resp is not None:
+                answer = checkout_resp.answer or ""
+                events = await _collect_stream_words(answer)
+                stream_done: dict = {
+                    "type": "done",
+                    "message_id": str(checkout_resp.message_id) if checkout_resp.message_id else "",
+                    "session_id": str(session.session_id),
+                    "answer_html": answer,
+                    "cited_products": [],
+                    "suggestions": [],
+                }
+                if checkout_resp.checkout_action:
+                    stream_done["checkout_action"] = checkout_resp.checkout_action
+                events.append(_sse(stream_done))
+                return {"early_return": True, "events": events}
+
         if commerce_intent:
             commerce_response = await self._handle_commerce_intent(
                 commerce_intent=commerce_intent,
@@ -762,7 +896,7 @@ class ChatService:
                          for p in (commerce_response.cited_products or [])]
                 suggestions = [s.model_dump() if hasattr(s, "model_dump") else s
                                for s in (commerce_response.suggestions or [])]
-                done_event: dict = {
+                comm_done: dict = {
                     "type": "done",
                     "message_id": str(commerce_response.message_id) if commerce_response.message_id else "",
                     "session_id": str(session.session_id),
@@ -771,14 +905,16 @@ class ChatService:
                     "suggestions": suggestions,
                 }
                 if commerce_response.continue_url:
-                    done_event["continue_url"] = commerce_response.continue_url
+                    comm_done["continue_url"] = commerce_response.continue_url
                 if commerce_response.checkout_data:
-                    done_event["checkout_data"] = commerce_response.checkout_data
+                    comm_done["checkout_data"] = commerce_response.checkout_data
                 if commerce_response.cart_data:
-                    done_event["cart_data"] = commerce_response.cart_data
+                    comm_done["cart_data"] = commerce_response.cart_data
                 if commerce_response.order_history_data:
-                    done_event["order_history_data"] = commerce_response.order_history_data
-                events.append(_sse(done_event))
+                    comm_done["order_history_data"] = commerce_response.order_history_data
+                if commerce_response.checkout_action:
+                    comm_done["checkout_action"] = commerce_response.checkout_action
+                events.append(_sse(comm_done))
                 return {"early_return": True, "events": events}
 
         skill_ctx = SkillContext(
@@ -1210,6 +1346,171 @@ class ChatService:
                 _bg_update_profile(customer_id, slots, cited_products, intent, people or [])
             )
         asyncio.create_task(_bg_summarise(session_id))
+
+    # ── Checkout agent mode ──────────────────────────────────────────────
+
+    async def _handle_checkout_mode(
+        self,
+        session: Session,
+        request: ChatRequest,
+        customer_profile: dict | None,
+        conversation: ConversationHistory,
+        t_start: float,
+    ) -> ChatResponse | None:
+        """
+        Handle a message while the checkout agent is active.
+        Returns ChatResponse if handled, None to fall through.
+        """
+        # Timeout check — 30 minutes
+        entered_at = self._memory.get_checkout_entered_at(session)
+        if entered_at and (time.time() - entered_at > 1800):
+            await self._memory.set_active_agent(session, None)
+            return await self._direct_response(
+                session, request,
+                "Your checkout session timed out. Your cart is saved for when you're ready!",
+                "checkout_timeout", t_start,
+            )
+
+        customer_id = str(session.customer_id) if session.customer_id else ""
+
+        # Load checkout context (fresh every turn)
+        stripe_service = StripeCustomerService(self._commerce)
+        checkout_session_id = (session.context or {}).get("checkout_session_id", "")
+        cart_response = await self._commerce.get_checkout_session(checkout_session_id)
+        saved_addresses = (customer_profile or {}).get("addresses", [])
+        saved_payments = await stripe_service.list_payment_methods(customer_id)
+
+        cart_data = cart_response.data if cart_response.success else {}
+
+        # Build checkout context JSON for the agent
+        checkout_context = {
+            "cart": {
+                "checkout_session_id": checkout_session_id,
+                "line_items": cart_data.get("lineItemsSnapshot", []),
+                "totals": cart_data.get("totalsSnapshot", {}),
+            },
+            "customer": {
+                "customer_id": customer_id,
+                "name": (customer_profile or {}).get("name", ""),
+                "email": (customer_profile or {}).get("email", ""),
+                "phone": (customer_profile or {}).get("phone", ""),
+            },
+            "saved_addresses": saved_addresses,
+            "saved_payment_methods": saved_payments,
+        }
+
+        # Handle __checkout: prefixed messages from frontend card actions
+        message = request.message
+        checkout_event = None
+
+        # __checkout: messages are system events — parse BEFORE trigger rewrite
+        if message.startswith("__checkout:"):
+            # Format: __checkout:action_type:json_payload
+            parts = message.split(":", 2)  # ["__checkout", "action_type", "json_payload"]
+            event_type = parts[1] if len(parts) > 1 else ""
+            checkout_event = {"event": event_type}
+            # Parse JSON payload if present
+            if len(parts) > 2:
+                try:
+                    payload = json.loads(parts[2])
+                    checkout_event.update(payload)
+                except json.JSONDecodeError:
+                    pass
+            if request.filters:
+                checkout_event.update(request.filters)
+            message = f"[System event: {event_type}]"
+        else:
+            # If the message is a checkout trigger (from re-entry or stale session),
+            # rewrite it so the agent presents the order summary instead of
+            # misinterpreting the product name as a recommendation request
+            _checkout_triggers = [
+                "checkout", "buy now", "buy it", "buy this", "i want to buy",
+                "place order", "purchase", "customer wants to checkout",
+            ]
+            if any(t in message.lower() for t in _checkout_triggers):
+                message = "Customer wants to checkout. Present the order summary."
+
+        # Load checkout agent prompt
+        agent_prompt = skill_loader.load_agent("checkout-agent")
+        system_prompt = (
+            agent_prompt
+            + "\n\n## Current Checkout Context\n\n```json\n"
+            + json.dumps(checkout_context, indent=2, default=str)
+            + "\n```"
+        )
+        if checkout_event:
+            system_prompt += (
+                "\n\n## Incoming Event\n\n```json\n"
+                + json.dumps(checkout_event, indent=2)
+                + "\n```"
+            )
+
+        # History
+        llm_history = [
+            {"role": t["role"], "content": t["content"]}
+            for t in conversation.recent_turns[-6:]
+        ]
+
+        # LLM tool decision with checkout tools
+        try:
+            tool_call = await self._llm.decide_tool(
+                system_prompt=system_prompt,
+                user_message=message,
+                history=llm_history,
+                tools=CHECKOUT_TOOL_DEFINITIONS,
+            )
+        except LLMError:
+            return await self._error_response(session, request, t_start)
+
+        # Execute checkout tool
+        checkout_tools = CheckoutToolRegistry(
+            commerce_client=self._commerce,
+            customer_repo=self._customer_repo,
+            stripe_service=stripe_service,
+            customer_id=customer_id,
+            checkout_session_id=checkout_session_id,
+        )
+        tool_result = await checkout_tools.execute(tool_call.tool_name, tool_call.tool_args)
+
+        # Handle exit_checkout — clear mode
+        if tool_call.tool_name == "exit_checkout":
+            await self._memory.set_active_agent(session, None)
+
+        # Log checkout tool failures but DON'T auto-exit — let the agent handle it.
+        # The agent prompt knows how to offer alternatives on failure.
+        if not tool_result.success and tool_call.tool_name != "exit_checkout":
+            logger.warning(
+                "chat.checkout_tool_failed",
+                tool=tool_call.tool_name,
+                error=tool_result.summary,
+            )
+
+        # Generate response with tool result context
+        try:
+            llm_result = await self._llm.generate(
+                system_prompt=system_prompt,
+                user_message=message,
+                history=llm_history,
+                tool_result_summary=tool_result.summary,
+                tool_name=tool_call.tool_name,
+            )
+        except LLMError:
+            return await self._error_response(session, request, t_start)
+
+        # Build response
+        response = await self._direct_response(
+            session, request, llm_result.content,
+            f"checkout_{tool_call.tool_name}", t_start,
+        )
+
+        # Attach checkout_action for frontend SSE
+        if tool_result.checkout_action:
+            response.checkout_action = {
+                "action": tool_result.checkout_action,
+                **tool_result.data,
+            }
+
+        return response
 
     # ── Instant response builders ─────────────────────────────────────────
 
@@ -1813,15 +2114,20 @@ class ChatService:
     async def _direct_response(
         self, session, request, answer, intent, t_start
     ) -> ChatResponse:
-        await self._message_repo.create(
-            session_id=session.session_id, role=MessageRole.USER, content=request.message,
-            intent=intent, guardrail_status=GuardrailStatus.PASSED,
-        )
+        is_checkout_system_event = request.message.startswith("__checkout:")
+        if not is_checkout_system_event:
+            await self._message_repo.create(
+                session_id=session.session_id, role=MessageRole.USER, content=request.message,
+                intent=intent, guardrail_status=GuardrailStatus.PASSED,
+            )
         bot_msg = await self._message_repo.create(
             session_id=session.session_id, role=MessageRole.ASSISTANT, content=answer,
             intent=intent, guardrail_status=GuardrailStatus.PASSED, llm_model="direct",
         )
-        await self._session_repo.increment_counters(session.session_id, turn_delta=2)
+        await self._session_repo.increment_counters(
+            session.session_id,
+            turn_delta=1 if is_checkout_system_event else 2,
+        )
         await self._db.commit()
         _, answer_html, _ = self._citations.process(answer, {})
         suggestions = await self._generate_suggestions_only(request.message, answer)

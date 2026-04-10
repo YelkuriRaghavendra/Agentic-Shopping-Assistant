@@ -333,6 +333,65 @@ export class CheckoutSessionService {
     );
   }
 
+  /**
+   * Create a PaymentIntent for a saved card, returning client_secret for
+   * frontend confirmation (supports 3DS required by Indian cards/RBI).
+   *
+   * Flow: backend creates PI → returns client_secret → frontend confirms
+   * with stripe.confirmPayment() → webhook completes the order.
+   */
+  async chargeSavedPaymentMethod(
+    sessionId: string,
+    paymentMethodId: string,
+    customerId: string,
+  ): Promise<{ clientSecret: string; paymentIntentId: string; session: CheckoutSession }> {
+    const session = await this.loadSession(sessionId);
+    this.assertNotCanceled(session);
+
+    const amount = session.totalsSnapshot?.grand_total_cents ?? 0;
+    if (amount <= 0) {
+      throw new CommerceException(
+        CommerceErrorCodes.VALIDATION,
+        'Invalid order amount',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    // Search for or create a Stripe Customer linked to our customer ID
+    const customers = await this.stripe.customers.search({
+      query: `metadata['internal_customer_id']:'${customerId}'`,
+      limit: 1,
+    });
+    let stripeCustomerId: string;
+    if (customers.data.length > 0) {
+      stripeCustomerId = customers.data[0].id;
+    } else {
+      const newCustomer = await this.stripe.customers.create({
+        metadata: { internal_customer_id: customerId },
+      });
+      stripeCustomerId = newCustomer.id;
+    }
+
+    // Create PaymentIntent WITHOUT confirming — frontend handles 3DS
+    const paymentIntent = await this.stripe.paymentIntents.create({
+      amount,
+      currency: 'inr',
+      customer: stripeCustomerId,
+      payment_method: paymentMethodId,
+      metadata: { checkout_session_id: sessionId },
+    });
+
+    session.stripePaymentIntentId = paymentIntent.id;
+    session.stripeClientSecret = paymentIntent.client_secret ?? null;
+    await this.sessionRepo.save(session);
+
+    return {
+      clientSecret: paymentIntent.client_secret!,
+      paymentIntentId: paymentIntent.id,
+      session,
+    };
+  }
+
   // ── Private helpers ─────────────────────────────────────────────────────────
 
   private async loadSession(sessionId: string): Promise<CheckoutSession> {

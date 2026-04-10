@@ -25,4 +25,7 @@ export const endpoints = {
   orderHistory:     (customerId: string) => `${commerceBaseUrl}/commerce/orders?customerId=${customerId}`,
 } as const;
 
+export const stripePublishableKey =
+  process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || "";
+
 export { apiBaseUrl };

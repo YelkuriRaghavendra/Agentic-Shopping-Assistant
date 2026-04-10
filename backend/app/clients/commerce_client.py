@@ -136,6 +136,29 @@ class CommerceClient(BaseHTTPClient):
             f"/commerce/checkout-sessions/{session_id}/cancel", {}, request_id
         )
 
+    async def charge_saved_card(
+        self,
+        session_id: str,
+        payment_method_id: str,
+        address_id: str,
+        customer_id: str,
+        request_id: str | None = None,
+    ) -> CommerceResponse:
+        """
+        POST /commerce/checkout-sessions/:id/charge-saved
+        Charges a saved PaymentMethod server-side (off_session).
+        """
+        payload: dict[str, Any] = {
+            "payment_method_id": payment_method_id,
+            "address_id": address_id,
+            "customer_id": customer_id,
+        }
+        return await self._commerce_post(
+            f"/commerce/checkout-sessions/{session_id}/charge-saved",
+            payload,
+            request_id,
+        )
+
     async def get_checkout_session(
         self,
         session_id: str,
