@@ -320,16 +320,10 @@ export function useChat(
 
       if (sessionEnded) return;
 
-      const userMessage: ChatMessageUI = {
-        id: generateId(),
-        role: "user",
-        content: trimmed || "Here's my outfit, help me find matching shoes",
-        imageBase64: imageBase64,
-        timestamp: new Date(),
-      };
+      // __checkout: prefixed messages are internal system actions from
+      // inline checkout cards. They should not appear as user bubbles.
+      const isCheckoutAction = trimmed.startsWith("__checkout:");
 
-      // Add both user message and bot placeholder in a single state update
-      // to guarantee user message always appears above bot response
       const botId = generateId();
       const botMessage: ChatMessageUI = {
         id: botId,
@@ -337,7 +331,19 @@ export function useChat(
         content: "",
         timestamp: new Date(),
       };
-      setMessages((prev) => [...prev, userMessage, botMessage]);
+
+      if (isCheckoutAction) {
+        setMessages((prev) => [...prev, botMessage]);
+      } else {
+        const userMessage: ChatMessageUI = {
+          id: generateId(),
+          role: "user",
+          content: trimmed || "Here's my outfit, help me find matching shoes",
+          imageBase64: imageBase64,
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, userMessage, botMessage]);
+      }
       setLoading(true);
       setError(null);
       scrollToBottom();
@@ -462,6 +468,9 @@ export function useChat(
                           orderHistoryData: (event.order_history_data as OrderHistoryData) || undefined,
                           setupIntentSecret: event.checkout_action?.action === "payment_setup"
                             ? (event.checkout_action.setup_intent_secret as string)
+                            : undefined,
+                          paymentIntentSecret: event.checkout_action?.action === "confirm_payment"
+                            ? (event.checkout_action.payment_intent_secret as string)
                             : undefined,
                           addressFormData: event.checkout_action?.action === "address_form"
                             ? (event.checkout_action.prefilled as ChatMessageUI["addressFormData"])
@@ -646,6 +655,9 @@ export function useChat(
                           orderHistoryData: (event.order_history_data as OrderHistoryData) || undefined,
                           setupIntentSecret: event.checkout_action?.action === "payment_setup"
                             ? (event.checkout_action.setup_intent_secret as string)
+                            : undefined,
+                          paymentIntentSecret: event.checkout_action?.action === "confirm_payment"
+                            ? (event.checkout_action.payment_intent_secret as string)
                             : undefined,
                           addressFormData: event.checkout_action?.action === "address_form"
                             ? (event.checkout_action.prefilled as ChatMessageUI["addressFormData"])

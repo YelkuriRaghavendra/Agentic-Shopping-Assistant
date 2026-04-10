@@ -1,5 +1,6 @@
 """Tests for checkout agent tools and mode switching."""
 import time
+import uuid
 
 import pytest
 from unittest.mock import AsyncMock, MagicMock
@@ -121,9 +122,19 @@ class TestCheckoutToolHandlers:
         assert result.data["error_code"] == "card_declined"
 
     @pytest.mark.asyncio
-    async def test_save_address(self, registry):
-        registry._customer_repo.get_profile = AsyncMock(return_value={"addresses": []})
-        registry._customer_repo.update_profile = AsyncMock()
+    async def test_save_address(self):
+        commerce = AsyncMock()
+        customer_repo = AsyncMock()
+        stripe_service = AsyncMock()
+        registry = CheckoutToolRegistry(
+            commerce_client=commerce,
+            customer_repo=customer_repo,
+            stripe_service=stripe_service,
+            customer_id="11111111-1111-1111-1111-111111111111",
+            checkout_session_id="cs_456",
+        )
+        customer_repo.get_by_id.return_value = MagicMock(profile={"addresses": []})
+        customer_repo.update_profile = AsyncMock()
 
         result = await registry.execute("save_address", {
             "full_name": "Raghav",
@@ -135,6 +146,34 @@ class TestCheckoutToolHandlers:
         assert "addr_" in result.data["address_id"]
         # First address should be default
         assert result.data["address"]["is_default"] is True
+        customer_repo.get_by_id.assert_awaited_once_with(
+            uuid.UUID("11111111-1111-1111-1111-111111111111")
+        )
+        customer_repo.update_profile.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_save_address_returns_failure_when_repo_errors(self):
+        commerce = AsyncMock()
+        customer_repo = AsyncMock()
+        stripe_service = AsyncMock()
+        registry = CheckoutToolRegistry(
+            commerce_client=commerce,
+            customer_repo=customer_repo,
+            stripe_service=stripe_service,
+            customer_id="11111111-1111-1111-1111-111111111111",
+            checkout_session_id="cs_456",
+        )
+        customer_repo.get_by_id.side_effect = RuntimeError("db unavailable")
+
+        result = await registry.execute("save_address", {
+            "full_name": "Raghav",
+            "address_line": "42 MG Road",
+            "city": "Bangalore",
+            "pincode": "560001",
+        })
+
+        assert result.success is False
+        assert "db unavailable" in result.summary
 
     @pytest.mark.asyncio
     async def test_request_payment_setup(self, registry):

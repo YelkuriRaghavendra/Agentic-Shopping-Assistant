@@ -14,6 +14,7 @@ Tools:
 """
 
 import time
+import uuid
 from dataclasses import dataclass
 from typing import Any
 
@@ -95,7 +96,8 @@ CHECKOUT_TOOL_DEFINITIONS: list[dict] = [
             "name": "request_address_form",
             "description": (
                 "Render inline address form with pre-filled fields. "
-                "Use when user gives a partial address missing 3+ fields."
+                "Use by default whenever checkout needs a delivery address and none is saved yet. "
+                "Also use when the user gives a partial address."
             ),
             "parameters": {
                 "type": "object",
@@ -284,16 +286,32 @@ class CheckoutToolRegistry:
 
         if self._customer_id:
             try:
-                profile = await self._customer_repo.get_profile(self._customer_id)
-                existing = profile.get("addresses", []) if profile else []
+                customer_uuid = uuid.UUID(self._customer_id)
+                customer = await self._customer_repo.get_by_id(customer_uuid)
+                if not customer:
+                    return CheckoutToolResult(
+                        tool_name="save_address",
+                        success=False,
+                        data={"error": "Customer not found."},
+                        summary="Could not save address because the customer record was not found.",
+                    )
+
+                profile = customer.profile or {}
+                existing = list(profile.get("addresses", []))
                 if not existing:
                     address["is_default"] = True
                 existing.append(address)
                 await self._customer_repo.update_profile(
-                    self._customer_id, {"addresses": existing}
+                    customer_uuid, {"addresses": existing}
                 )
             except Exception as exc:
                 logger.warning("checkout_tools.save_address_failed", error=str(exc))
+                return CheckoutToolResult(
+                    tool_name="save_address",
+                    success=False,
+                    data={"error": str(exc)},
+                    summary=f"Could not save address: {exc}",
+                )
 
         return CheckoutToolResult(
             tool_name="save_address",

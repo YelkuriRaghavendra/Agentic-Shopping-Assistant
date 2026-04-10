@@ -29,7 +29,8 @@ interface PaymentSetupCardProps {
 function SetupForm({
   onComplete,
   onError,
-}: Omit<PaymentSetupCardProps, "clientSecret">) {
+  onSaved,
+}: Omit<PaymentSetupCardProps, "clientSecret"> & { onSaved: () => void }) {
   const stripe = useStripe();
   const elements = useElements();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -67,6 +68,7 @@ function SetupForm({
         exp_month: 0,
         exp_year: 0,
       });
+      onSaved();
     }
     setIsSubmitting(false);
   };
@@ -111,6 +113,8 @@ export function PaymentSetupCard({
   onComplete,
   onError,
 }: PaymentSetupCardProps) {
+  const [status, setStatus] = useState<"editing" | "saved">("editing");
+
   if (!stripePromise) {
     return (
       <div style={{ color: "#f87171", fontSize: "12px", padding: "16px" }}>
@@ -150,24 +154,62 @@ export function PaymentSetupCard({
           Save Payment Method
         </span>
       </div>
-      <Elements
-        stripe={stripePromise}
-        options={{
-          clientSecret,
-          appearance: {
-            theme: "night",
-            variables: {
-              colorPrimary: "#1D9E75",
-              colorBackground: "#0C0C0F",
-              colorText: "rgba(255,255,255,0.8)",
-              borderRadius: "8px",
-              fontFamily: "var(--font-inter)",
+      {status === "saved" ? (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "10px",
+            padding: "8px 0 2px",
+          }}
+        >
+          <div
+            style={{
+              width: "28px",
+              height: "28px",
+              borderRadius: "50%",
+              background: "rgba(29,158,117,0.15)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+            }}
+          >
+            <span style={{ color: "#1D9E75", fontSize: "14px" }}>&#10003;</span>
+          </div>
+          <div>
+            <p style={{ color: "#1D9E75", fontSize: "13px", margin: 0, fontWeight: 600 }}>
+              Card saved
+            </p>
+            <p style={{ color: "rgba(255,255,255,0.35)", fontSize: "10px", margin: "3px 0 0", fontFamily: "var(--font-mono)" }}>
+              Continuing checkout with your saved payment method
+            </p>
+          </div>
+        </div>
+      ) : (
+        <Elements
+          stripe={stripePromise}
+          options={{
+            clientSecret,
+            appearance: {
+              theme: "night",
+              variables: {
+                colorPrimary: "#1D9E75",
+                colorBackground: "#0C0C0F",
+                colorText: "rgba(255,255,255,0.8)",
+                borderRadius: "8px",
+                fontFamily: "var(--font-inter)",
+              },
             },
-          },
-        }}
-      >
-        <SetupForm onComplete={onComplete} onError={onError} />
-      </Elements>
+          }}
+        >
+          <SetupForm
+            onComplete={onComplete}
+            onError={onError}
+            onSaved={() => setStatus("saved")}
+          />
+        </Elements>
+      )}
       <p
         style={{
           color: "rgba(255,255,255,0.2)",

@@ -1401,18 +1401,9 @@ class ChatService:
 
         # Handle __checkout: prefixed messages from frontend card actions
         message = request.message
-
-        # If the message is a checkout trigger (from re-entry or stale session),
-        # rewrite it so the agent presents the order summary instead of
-        # misinterpreting the product name as a recommendation request
-        _checkout_triggers = [
-            "checkout", "buy now", "buy it", "buy this", "i want to buy",
-            "place order", "purchase", "customer wants to checkout",
-        ]
-        if any(t in message.lower() for t in _checkout_triggers):
-            message = "Customer wants to checkout. Present the order summary."
-
         checkout_event = None
+
+        # __checkout: messages are system events — parse BEFORE trigger rewrite
         if message.startswith("__checkout:"):
             # Format: __checkout:action_type:json_payload
             parts = message.split(":", 2)  # ["__checkout", "action_type", "json_payload"]
@@ -1428,6 +1419,16 @@ class ChatService:
             if request.filters:
                 checkout_event.update(request.filters)
             message = f"[System event: {event_type}]"
+        else:
+            # If the message is a checkout trigger (from re-entry or stale session),
+            # rewrite it so the agent presents the order summary instead of
+            # misinterpreting the product name as a recommendation request
+            _checkout_triggers = [
+                "checkout", "buy now", "buy it", "buy this", "i want to buy",
+                "place order", "purchase", "customer wants to checkout",
+            ]
+            if any(t in message.lower() for t in _checkout_triggers):
+                message = "Customer wants to checkout. Present the order summary."
 
         # Load checkout agent prompt
         agent_prompt = skill_loader.load_agent("checkout-agent")
@@ -2113,15 +2114,20 @@ class ChatService:
     async def _direct_response(
         self, session, request, answer, intent, t_start
     ) -> ChatResponse:
-        await self._message_repo.create(
-            session_id=session.session_id, role=MessageRole.USER, content=request.message,
-            intent=intent, guardrail_status=GuardrailStatus.PASSED,
-        )
+        is_checkout_system_event = request.message.startswith("__checkout:")
+        if not is_checkout_system_event:
+            await self._message_repo.create(
+                session_id=session.session_id, role=MessageRole.USER, content=request.message,
+                intent=intent, guardrail_status=GuardrailStatus.PASSED,
+            )
         bot_msg = await self._message_repo.create(
             session_id=session.session_id, role=MessageRole.ASSISTANT, content=answer,
             intent=intent, guardrail_status=GuardrailStatus.PASSED, llm_model="direct",
         )
-        await self._session_repo.increment_counters(session.session_id, turn_delta=2)
+        await self._session_repo.increment_counters(
+            session.session_id,
+            turn_delta=1 if is_checkout_system_event else 2,
+        )
         await self._db.commit()
         _, answer_html, _ = self._citations.process(answer, {})
         suggestions = await self._generate_suggestions_only(request.message, answer)
