@@ -6,15 +6,15 @@
     "disregard your", "forget your instructions", "new instructions:",
     "system prompt", "do whatever i say", "override your"
   ],
-  "harmful_patterns": ["\\b(kill|murder|bomb|attack|weapon|exploit|hack)\\b"],
+  "harmful_patterns": ["\\b(kill|murder|suicide|bomb|attack|threat|abuse|harass|stalk|hack|exploit|malware|ransomware)\\b"],
   "off_topic_signals": [
-    "\\b(write|code|program|script|essay|poem|story|song)\\b",
-    "\\b(math|calcul|equation|solve|formula)\\b",
-    "\\b(politic|election|president|minister|government)\\b",
-    "\\b(recipe|cook|ingredient|calories)\\b"
+    "\\b(politics|election|president|government|war|military|vote|voting|democrat|republican)\\b",
+    "\\b(diagnos|disease|symptom|medication|prescription|therapy)\\b",
+    "\\b(stock\\s*market|crypto|bitcoin|invest|trading|forex)\\b",
+    "\\b(porn|explicit|nude|naked)\\b"
   ],
   "shopping_signals": [
-    "\\b(buy|price|deliver|ship|order|return|shoe|sneaker|product|brand|size|cart|checkout)\\b"
+    "\\b(buy|purchase|order|product|price|brand|size|delivery|shipping|return|refund|discount|gift|stock|recommend|compare|review|available|shop|cart|checkout|payment|item|sale|deal|offer)\\b"
   ],
   "pii_patterns": {
     "credit_card": "\\b(?:\\d[ -]*?){13,16}\\b",
@@ -24,15 +24,15 @@
     "frustrated", "angry", "annoyed", "terrible", "worst", "hate", "unacceptable"
   ],
   "intent_keywords": {
-    "product_search": ["find", "looking for", "search", "show me", "any", "recommend"],
-    "outfit_pairing": ["match", "pair", "goes with", "complement", "outfit", "combine"],
-    "gift_finding": ["gift", "present", "birthday", "for my", "for him", "for her"],
-    "size_advice": ["size", "fit", "sizing", "wide feet", "narrow", "true to size"],
-    "order_lookup": ["order", "tracking", "shipped", "delivery status"],
-    "return_request": ["return", "refund", "exchange", "wrong size", "damaged"],
-    "policy_faq": ["policy", "shipping time", "warranty", "how long"],
-    "comparison": ["compare", "vs", "versus", "better", "difference"],
-    "general": ["hello", "hi", "hey", "thanks", "thank you", "bye"]
+    "order_status": ["track", "where is my order", "order status", "shipment", "shipped"],
+    "return_request": ["return", "refund", "send back", "exchange"],
+    "price_query": ["price", "cost", "how much", "discount", "sale", "coupon", "deal"],
+    "comparison": ["vs", "versus", "compare", "difference between", "better"],
+    "greeting": ["hi", "hello", "hey", "good morning", "good evening", "howdy"],
+    "size_query": ["size", "fit", "wide", "narrow", "measurement"],
+    "purchase_intent": ["buy", "purchase", "add to cart", "checkout"],
+    "recommendation": ["recommend", "suggest", "what should i", "help me find", "best"],
+    "product_search": ["looking for", "find", "show me", "search", "want"]
   },
   "responses": {
     "injection_blocked": "I'm here to help you with shopping and orders. What can I find for you today?",
