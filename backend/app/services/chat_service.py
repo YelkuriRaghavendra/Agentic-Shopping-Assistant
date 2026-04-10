@@ -40,6 +40,7 @@ from app.clients.llm_client import LLMClient, ToolCall, SuggestionItem
 from app.clients.rag_client import RAGClient
 from app.clients.commerce_client import CommerceClient
 from app.config.loader import business_rules, prompts
+from app.config.loader import commerce_intents as commerce_intents_config, memory_config, streaming_config
 from app.core.config import get_settings
 from app.core.exceptions import (
     SessionNotFoundError,
@@ -79,7 +80,7 @@ logger = get_logger(__name__)
 
 # Max estimated tokens to spend on conversation history sent to the LLM.
 # Each turn's token count is approximated as len(content) // 4.
-HISTORY_TOKEN_BUDGET = 800
+HISTORY_TOKEN_BUDGET = memory_config()["history"]["token_budget"]
 
 # LLM prompt that teaches the agent when to ask vs when to search
 # Tool selection prompt lives in app/services/skills/prompts.py → TOOL_SELECTION_PROMPT
@@ -90,70 +91,26 @@ HISTORY_TOKEN_BUDGET = 800
 # ─────────────────────────────────────────────────────────────────────────────
 
 # Keyword → commerce intent mapping (evaluated before LLM tool-calling)
-_COMMERCE_INTENT_MAP: list[tuple[list[str], str]] = [
-    (["checkout", "check out", "place order", "place my order", "buy now",
-      "proceed to checkout", "proceed to payment", "proceed with payment",
-      "proceed with purchase", "place the order",
-      "purchase this", "purchase it", "buy this", "buy it",
-      "complete my purchase", "complete the purchase", "complete purchase",
-      "confirm my purchase", "confirm purchase", "confirm the purchase",
-      "confirm my order", "confirm order",
-      "finalize", "finalise", "make the purchase",
-      "pay for this", "payment for the", "i want to pay for",
-      "i want to buy now", "i'd like to buy now", "buy it now", "purchase it now",
-      "order it now", "buy sneakers now", "buy shoes now"], "checkout_initiate"),
-    (["add to cart", "add to my cart", "put in cart", "put it in", "add it", "add this",
-      "i want to add", "add the"], "add_to_cart"),
-    (["remove from cart", "take out of cart", "delete from cart", "remove it", "take it out"], "remove_from_cart"),
-    (["view cart", "show cart", "what's in my cart", "my cart", "see my cart", "show my cart"], "view_cart"),
-    (["order status", "where is my order", "track my order", "order #", "order number",
-      "status of my order", "where's my order"], "order_status"),
-    (["order history", "my orders", "past orders", "previous orders", "all orders",
-      "show my orders", "show orders", "see my orders"], "order_history"),
-    (["cancel order", "cancel my order", "cancel purchase", "cancel the order"], "cancel_order"),
-]
+def _build_commerce_intent_map() -> list[tuple[list[str], str]]:
+    """Build commerce intent map from config."""
+    ci = commerce_intents_config()
+    return [(keywords, intent) for intent, keywords in ci["intent_keywords"].items()]
+
+_COMMERCE_INTENT_MAP: list[tuple[list[str], str]] = _build_commerce_intent_map()
 
 # Required slots per commerce intent
-_REQUIRED_SLOTS: dict[str, list[str]] = {
-    "add_to_cart":       ["product_id", "quantity"],
-    "remove_from_cart":  ["product_id"],
-    "view_cart":         [],
-    "checkout_initiate": [],   # line_items built from cart or RAG-resolved product
-    "order_status":      ["order_id"],
-    "order_history":     [],
-    "cancel_order":      ["order_id"],
-}
+_REQUIRED_SLOTS: dict[str, list[str]] = commerce_intents_config()["required_slots"]
 
 # Re-prompt questions for missing slots
-_SLOT_PROMPTS: dict[str, str] = {
-    "product_id":  "Which product would you like? Could you describe it or give me the product name?",
-    "quantity":    "How many would you like to add?",
-    "order_id":    "Could you share your order number? You can find it in your confirmation email.",
-    "line_items":  "Your cart appears to be empty. Would you like to add some items first?",
-}
+_SLOT_PROMPTS: dict[str, str] = commerce_intents_config()["slot_prompts"]
 
 
 # Phrases that signal purchase intent but need a specific product reference
 # (e.g. "i want to buy the adidas shoe" → checkout, "i want to buy shoes" → search)
-_PURCHASE_INTENT_PHRASES = [
-    "i want to buy",
-    "i'd like to buy",
-    "i would like to buy",
-    "i want to purchase",
-    "i'd like to purchase",
-    "i would like to purchase",
-    "i want to order",
-    "i'd like to order",
-    "i would like to order",
-]
+_PURCHASE_INTENT_PHRASES = commerce_intents_config()["purchase_intent_phrases"]
 
 # Generic category words that indicate browsing, not checkout
-_BROWSE_CATEGORY_WORDS = {
-    "shoes", "shoe", "sneakers", "boots", "sandals", "slippers",
-    "shirts", "shirt", "pants", "jeans", "jacket", "jackets",
-    "clothes", "clothing", "apparel", "dress", "dresses",
-    "something", "anything", "some", "a few", "options",
-}
+_BROWSE_CATEGORY_WORDS = set(commerce_intents_config()["browse_category_words"])
 
 
 def _is_specific_product_reference(msg: str, phrase: str) -> bool:
@@ -280,8 +237,9 @@ class ChatService:
         # Turn 1+ = check if user indicated shopping for themselves
         if customer_profile and session.message_count > 0:
             msg_lower = request.message.lower()
-            _self_signals = ["myself", "for me", "for myself", "me ", "i need", "i want", "i'm looking", "im looking", "my size"]
-            _other_signals = ["someone", "someone else", "gift", "for my friend", "for my dad", "for my mom", "for my mum", "for my wife", "for my husband", "for my partner", "for him", "for her"]
+            _ci = commerce_intents_config()
+            _self_signals = _ci["self_signals"]
+            _other_signals = _ci["other_signals"]
             is_for_self = any(s in msg_lower for s in _self_signals)
             is_for_other = any(s in msg_lower for s in _other_signals)
             if is_for_self and not is_for_other:
@@ -401,8 +359,9 @@ class ChatService:
         # Walk backwards through turns, accumulating estimated tokens until
         # the budget is exhausted.  Always keep the last 2 turns (1 exchange)
         # and never exceed 6 turns (same cap as before).
-        _max_turns = 6
-        _min_turns = 2
+        _mc = memory_config()["history"]
+        _max_turns = _mc["max_turns"]
+        _min_turns = _mc["min_turns"]
         _budget = HISTORY_TOKEN_BUDGET
         _candidates = conversation.recent_turns[-_max_turns:]
         llm_history: list[dict] = []
@@ -516,7 +475,7 @@ class ChatService:
         await self._db.commit()
 
         # ── Generate title after 2nd user message ─────────────────────────
-        if session.message_count == 4 and not session.title:
+        if session.message_count == memory_config()["session"]["title_generation_threshold"] and not session.title:
             logger.info(f"Triggering title generation for session {session.session_id}, message_count={session.message_count}")
             asyncio.create_task(self._generate_session_title(session.session_id))
 
@@ -580,7 +539,7 @@ class ChatService:
             for i, word in enumerate(words):
                 token = word if i == 0 else " " + word
                 yield _sse({"type": "token", "content": token})
-                await asyncio.sleep(0.02)
+                await asyncio.sleep(streaming_config()["word_delay_seconds"])
 
         # ── Steps 1-8: same as non-streaming handle ──────────────────────
         # Send an initial heartbeat immediately so the client knows the connection is alive,
@@ -589,7 +548,7 @@ class ChatService:
         try:
             setup_task = asyncio.ensure_future(self._run_stream_setup(request, t_start))
             while not setup_task.done():
-                await asyncio.sleep(5)
+                await asyncio.sleep(streaming_config()["heartbeat_interval_seconds"])
                 if not setup_task.done():
                     yield ": heartbeat\n\n"
             setup_result = await setup_task
@@ -649,7 +608,7 @@ class ChatService:
         try:
             tool_task = asyncio.ensure_future(self._tools.execute(tool_name, tool_args))
             while not tool_task.done():
-                await asyncio.sleep(5)
+                await asyncio.sleep(streaming_config()["heartbeat_interval_seconds"])
                 if not tool_task.done():
                     yield ": heartbeat\n\n"
             tool_result = await tool_task
@@ -722,7 +681,7 @@ class ChatService:
         await self._db.commit()
 
         # ── Generate title after 2nd user message ─────────────────────────
-        if session.message_count == 4 and not session.title:
+        if session.message_count == memory_config()["session"]["title_generation_threshold"] and not session.title:
             logger.info(f"Triggering title generation for session {session.session_id}, message_count={session.message_count}")
             asyncio.create_task(self._generate_session_title(session.session_id))
 
@@ -782,8 +741,9 @@ class ChatService:
         # Pre-fill slots for returning customers ONLY after they confirm "for myself"
         if customer_profile and session.message_count > 0:
             msg_lower = request.message.lower()
-            _self_signals = ["myself", "for me", "for myself", "me ", "i need", "i want", "i'm looking", "im looking", "my size"]
-            _other_signals = ["someone", "someone else", "gift", "for my friend", "for my dad", "for my mom", "for my mum", "for my wife", "for my husband", "for my partner", "for him", "for her"]
+            _ci = commerce_intents_config()
+            _self_signals = _ci["self_signals"]
+            _other_signals = _ci["other_signals"]
             is_for_self = any(s in msg_lower for s in _self_signals)
             is_for_other = any(s in msg_lower for s in _other_signals)
             if is_for_self and not is_for_other:
@@ -931,12 +891,13 @@ class ChatService:
             tool_system_prompt += "\n\n" + skill_result.prompt_addon
         active_tools = TOOL_DEFINITIONS + skill_result.extra_tools
 
-        candidates = conversation.recent_turns[-6:]
+        _mc = memory_config()["history"]
+        candidates = conversation.recent_turns[-_mc["max_turns"]:]
         budget = HISTORY_TOKEN_BUDGET
         selected: list[dict] = []
         for turn in reversed(candidates):
             cost = len(turn["content"]) // 4
-            if budget - cost < 0 and len(selected) >= 2:
+            if budget - cost < 0 and len(selected) >= _mc["min_turns"]:
                 break
             selected.append(turn)
             budget -= cost
