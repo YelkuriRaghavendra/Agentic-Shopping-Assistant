@@ -31,3 +31,43 @@ def business_rules() -> dict:
 @lru_cache(maxsize=1)
 def prompts() -> dict:
     return _load("prompts.json")
+
+
+@lru_cache(maxsize=1)
+def commerce_intents() -> dict:
+    return _load("commerce_intents.json")
+
+
+@lru_cache(maxsize=1)
+def guardrails_config() -> dict:
+    return _load("guardrails.json")
+
+
+@lru_cache(maxsize=1)
+def style_config() -> dict:
+    return _load("style_advisor.json")
+
+
+@lru_cache(maxsize=1)
+def search_config() -> dict:
+    return _load("search.json")
+
+
+@lru_cache(maxsize=1)
+def memory_config() -> dict:
+    return _load("memory.json")
+
+
+@lru_cache(maxsize=1)
+def streaming_config() -> dict:
+    return _load("streaming.json")
+
+
+@lru_cache(maxsize=1)
+def agents_config() -> dict:
+    return _load("agents.json")
+
+
+@lru_cache(maxsize=1)
+def llm_config() -> dict:
+    return _load("llm.json")
