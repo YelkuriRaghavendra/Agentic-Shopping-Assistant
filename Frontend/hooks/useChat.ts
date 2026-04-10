@@ -488,6 +488,8 @@ export function useChat(
                     m.id === botId ? { ...m, content: event.content, streamDone: true } : m
                   )
                 );
+              } else if (event.type === "agent_status") {
+                // Agent status update — no-op for now, handled by AgentStatusIndicator
               }
             } catch {
               // skip malformed JSON lines
@@ -673,6 +675,8 @@ export function useChat(
                 setMessages((prev) =>
                   prev.map((m) => (m.id === botId ? { ...m, content: event.content, streamDone: true } : m))
                 );
+              } else if (event.type === "agent_status") {
+                // Agent status update — no-op for now, handled by AgentStatusIndicator
               }
             } catch {
               // skip malformed lines
