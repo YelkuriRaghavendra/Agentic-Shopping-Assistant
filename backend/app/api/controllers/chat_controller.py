@@ -42,11 +42,7 @@ from app.db.repositories import (
     MessageRepository,
 )
 from app.clients.rag_client import RAGClient
-from app.clients.commerce_client import CommerceClient
 from app.services.chat_service_v2 import ChatServiceV2
-from app.services.feature_flag_service import FeatureFlagService
-from app.services.guardrails_service import GuardrailsService
-from app.services.citation_service import CitationService
 from app.services.rate_limiter_service import RateLimiterService
 from app.agent.graph import build_graph
 
@@ -56,11 +52,7 @@ logger = get_logger(__name__)
 
 # Module-level singletons for stateless services
 _rag_client    = RAGClient()
-_commerce      = CommerceClient()
-_feature_flags = FeatureFlagService()
 _rate_limiter  = RateLimiterService()
-_guardrails    = GuardrailsService()
-_citations     = CitationService()
 
 # Lazy-initialised LangGraph graph (avoids import-time LLM creation)
 _graph = None
