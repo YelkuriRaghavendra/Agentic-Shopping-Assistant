@@ -398,7 +398,7 @@ export function useChat(
                           ? {
                               ...m,
                               id: event.message_id || botId,
-                              content: streamedContent,
+                              content: streamedContent || event.answer_html || "",
                               answerHtml: event.answer_html || undefined,
                               citedProducts: filterValidProducts(event.cited_products),
                               suggestions: event.suggestions,
@@ -461,7 +461,7 @@ export function useChat(
                       ? {
                           ...m,
                           id: event.message_id || botId,
-                          content: stripCitations(streamedContent),
+                          content: stripCitations(streamedContent) || event.answer_html || "",
                           answerHtml: event.answer_html || undefined,
                           citedProducts: filterValidProducts(event.cited_products),
                           suggestions: event.suggestions,
@@ -650,7 +650,7 @@ export function useChat(
                       ? {
                           ...m,
                           id: event.message_id || botId,
-                          content: stripCitations(streamedContent),
+                          content: stripCitations(streamedContent) || event.answer_html || "",
                           answerHtml: event.answer_html || undefined,
                           citedProducts: filterValidProducts(event.cited_products),
                           suggestions: event.suggestions,

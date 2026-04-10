@@ -46,16 +46,14 @@ def guardrails_node(state: dict) -> dict:
     if _CREDIT_CARD_RE.search(text) or _PASSWORD_RE.search(text):
         logger.warning("guardrails.pii_detected", preview=text[:40])
 
-    # 4. Off-topic (only if no shopping signal present)
+    # 4. Off-topic — only block if an explicit off-topic pattern matches
+    #    AND no shopping signal is present. Short replies like "yes", "size 9",
+    #    "open to anything" should pass through to the agent.
     has_shopping_signal = bool(_SHOPPING_RE.search(text_lower))
     if not has_shopping_signal:
-        # Block if an explicit off-topic pattern matches
         for pattern in _OFF_TOPIC_RES:
             if pattern.search(text_lower):
                 logger.info("guardrails.off_topic", preview=text_lower[:80])
                 return {"guardrail_status": "blocked", "agent_response": _RESPONSES["off_topic"]}
-        # Block if no shopping signal at all — message is unrelated to shopping
-        logger.info("guardrails.off_topic", preview=text_lower[:80])
-        return {"guardrail_status": "blocked", "agent_response": _RESPONSES["off_topic"]}
 
     return {"guardrail_status": "passed"}
