@@ -35,6 +35,7 @@ export interface ChatWindowProps {
   updateProfile?: (profile: Record<string, unknown>) => Promise<void>;
   addOrderConfirmation?: (order: OrderConfirmation) => void;
   sendCheckoutAction?: (action: string, payload: Record<string, unknown>) => void;
+  agentStatus?: string | null;
 }
 
 function HistorySkeleton() {
@@ -85,6 +86,7 @@ export function ChatWindow({
   updateProfile,
   addOrderConfirmation,
   sendCheckoutAction,
+  agentStatus,
 }: ChatWindowProps) {
   // Task 8.1: cart/orders drawer state
   const [cartData, setCartData] = useState<CartData | null>(null);
@@ -376,7 +378,7 @@ export function ChatWindow({
                 />
               ))}
               {isTyping && !messages.some((m) => m.role === "bot" && !m.streamDone) && (
-                <TypingIndicator key="typing" />
+                <TypingIndicator key="typing" status={agentStatus} />
               )}
             </AnimatePresence>
           )}

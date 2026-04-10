@@ -41,6 +41,7 @@ interface UseChatReturn {
   sessionEnded: boolean;
   activeSessionId: string | null;
   error: string | null;
+  agentStatus: string | null;
   bottomRef: React.RefObject<HTMLDivElement>;
 }
 
@@ -56,6 +57,7 @@ export function useChat(
   const queryClient = useQueryClient();
   const [isTyping, setIsTyping] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [agentStatus, setAgentStatus] = useState<string | null>(null);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(sessionId);
   const [sessionEnded, setSessionEnded] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -439,6 +441,7 @@ export function useChat(
               const event = JSON.parse(jsonStr);
 
               if (event.type === "token") {
+                if (!streamedContent) setAgentStatus(null); // clear status on first token
                 streamedContent += event.content;
                 setMessages((prev) =>
                   prev.map((m) =>
@@ -489,7 +492,7 @@ export function useChat(
                   )
                 );
               } else if (event.type === "agent_status") {
-                // Agent status update — no-op for now, handled by AgentStatusIndicator
+                setAgentStatus(event.status || "Working on your request...");
               }
             } catch {
               // skip malformed JSON lines
@@ -676,7 +679,7 @@ export function useChat(
                   prev.map((m) => (m.id === botId ? { ...m, content: event.content, streamDone: true } : m))
                 );
               } else if (event.type === "agent_status") {
-                // Agent status update — no-op for now, handled by AgentStatusIndicator
+                setAgentStatus(event.status || "Working on your request...");
               }
             } catch {
               // skip malformed lines
@@ -807,6 +810,7 @@ export function useChat(
     sessionEnded,
     activeSessionId,
     error,
+    agentStatus,
     bottomRef,
   };
 }

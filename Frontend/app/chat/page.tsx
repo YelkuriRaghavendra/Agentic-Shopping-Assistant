@@ -113,6 +113,7 @@ function ChatPageInner() {
           updateProfile={customer.updateProfile}
           addOrderConfirmation={chat.addOrderConfirmation}
           sendCheckoutAction={chat.sendCheckoutAction}
+          agentStatus={chat.agentStatus}
         />
       </div>
 

@@ -2,7 +2,11 @@
 
 import { motion } from "framer-motion";
 
-export function TypingIndicator() {
+interface TypingIndicatorProps {
+  status?: string | null;
+}
+
+export function TypingIndicator({ status }: TypingIndicatorProps) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
@@ -47,7 +51,7 @@ export function TypingIndicator() {
           className="font-mono text-[9px] uppercase tracking-widest"
           style={{ color: "rgba(255,255,255,0.25)", letterSpacing: "1.5px" }}
         >
-          Finding the best options...
+          {status || "Finding the best options..."}
         </span>
       </div>
     </motion.div>
