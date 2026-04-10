@@ -45,6 +45,7 @@ from app.clients.llm_client import LLMClient
 from app.clients.rag_client import RAGClient
 from app.clients.commerce_client import CommerceClient
 from app.services.chat_service import ChatService
+from app.services.chat_service_v2 import ChatServiceV2
 from app.services.feature_flag_service import FeatureFlagService
 from app.services.guardrails_service import GuardrailsService
 from app.services.memory_service import MemoryService
@@ -53,6 +54,7 @@ from app.services.citation_service import CitationService
 from app.services.rate_limiter_service import RateLimiterService
 from app.services.tool_registry import ToolRegistry
 from app.services.skills.skill_registry import SkillRegistry
+from app.agent.graph import build_graph
 
 import uuid
 
@@ -69,13 +71,35 @@ _prompt        = PromptBuilderService()
 _citations     = CitationService()
 _skills        = SkillRegistry()
 
+# Lazy-initialised LangGraph graph (avoids import-time LLM creation)
+_graph = None
 
-def _make_chat_service(db: AsyncSession) -> ChatService:
+
+def _get_graph():
+    global _graph
+    if _graph is None:
+        _graph = build_graph(rag_client=_rag_client)
+    return _graph
+
+
+def _make_chat_service(db: AsyncSession) -> ChatServiceV2:
     """
-    Factory: builds ChatService with all dependencies wired up.
+    Factory: builds ChatServiceV2 with the LangGraph graph wired up.
     Called once per request.
     """
-    session_repo  = SessionRepository(db)
+    return ChatServiceV2(
+        db=db,
+        graph=_get_graph(),
+        rate_limiter=_rate_limiter,
+    )
+
+
+def _make_chat_service_v1(db: AsyncSession) -> ChatService:
+    """
+    Legacy factory: builds ChatService v1 with all dependencies wired up.
+    Kept for rollback; will be removed in Task 21.
+    """
+    session_repo = SessionRepository(db)
     customer_repo = CustomerRepository(db)
     return ChatService(
         db=db,
