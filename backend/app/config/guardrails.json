@@ -14,7 +14,9 @@
     "\\b(porn|explicit|nude|naked)\\b"
   ],
   "shopping_signals": [
-    "\\b(buy|purchase|order|product|price|brand|size|delivery|shipping|return|refund|discount|gift|stock|recommend|compare|review|available|shop|cart|checkout|payment|item|sale|deal|offer)\\b"
+    "\\b(buy|purchase|order|product|price|brand|size|delivery|shipping|return|refund|discount|gift|stock|recommend|compare|review|available|shop|cart|checkout|payment|item|sale|deal|offer)\\b",
+    "\\b(shoes|shoe|boots|sneakers|sandals|clothing|clothes|shirt|pants|dress|jacket|coat|hat|bag|wallet|watch|jewel|accessory|accessories|fashion|outfit|wear|apparel|garment)\\b",
+    "\\b(looking\\s+for|find|search|show\\s+me|want|need|looking\\s+to|help\\s+me|suggest|suggestion|what.*best|which.*best|where\\s+can\\s+i|how\\s+much|cost|afford|budget|fit|fits)\\b"
   ],
   "pii_patterns": {
     "credit_card": "\\b(?:\\d[ -]*?){13,16}\\b",
