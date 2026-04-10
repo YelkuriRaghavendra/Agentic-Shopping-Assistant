@@ -11,6 +11,8 @@ import { ProductSlider } from "@/components/ProductSlider";
 function renderContent(text: string): string {
   // Replace literal \n with actual newlines (backend sometimes sends escaped)
   let cleaned = text.replace(/\\n/g, "\n");
+  // Strip citation markers [P1], [P2] etc.
+  cleaned = cleaned.replace(/\[P\d+\]/g, "");
 
   // If it already contains HTML tags, sanitize and return
   if (/<\/?(?:table|tr|td|th|ul|ol|li|p|br|div|strong|em|a)\b/i.test(cleaned)) {
@@ -98,7 +100,7 @@ export const MessageBubble = memo(function MessageBubble({ message, onSelectProd
               style={{ color: "rgba(255, 255, 255, 1)" }}
               suppressHydrationWarning
               dangerouslySetInnerHTML={{
-                __html: message.answerHtml
+                __html: message.answerHtml && /<[a-z][\s\S]*>/i.test(message.answerHtml)
                   ? sanitizeHtml(message.answerHtml.replace(/\\n/g, "\n"))
                   : renderContent(message.content),
               }}
