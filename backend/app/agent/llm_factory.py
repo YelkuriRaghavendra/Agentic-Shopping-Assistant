@@ -15,6 +15,7 @@ from enum import Enum
 from langchain_core.language_models import BaseChatModel
 
 from app.config.loader import llm_config
+from app.core.config import get_settings
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -38,11 +39,21 @@ def create_chat_model(
       3. llm.json "provider" field
     """
     config = llm_config()
-    provider = (
-        provider_override
-        or os.environ.get("LLM_PROVIDER")
-        or config.get("provider", "openai")
-    )
+
+    settings = get_settings()
+
+    # Auto-detect Azure from existing USE_AZURE setting (.env)
+    if not provider_override and not os.environ.get("LLM_PROVIDER"):
+        if settings.USE_AZURE:
+            provider = "azure_openai"
+        else:
+            provider = config.get("provider", "openai")
+    else:
+        provider = (
+            provider_override
+            or os.environ.get("LLM_PROVIDER")
+            or config.get("provider", "openai")
+        )
 
     tier_config = config["models"].get(tier.value, config["models"]["primary"])
 
@@ -66,10 +77,20 @@ def create_chat_model(
     if provider == "azure_openai":
         from langchain_openai import AzureChatOpenAI
         azure_config = config.get("azure", {})
-        deployment = azure_config.get("deployments", {}).get(tier.value, model_name)
-        endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT") or azure_config.get("endpoint", "")
-        api_version = os.environ.get("AZURE_OPENAI_API_VERSION") or azure_config.get("api_version", "2024-02-15-preview")
-        api_key = os.environ.get("AZURE_OPENAI_API_KEY", "")
+        # Read from Settings (.env) first, then llm.json fallback
+        if tier == ModelTier.CHEAP:
+            deployment = (
+                settings.AZURE_OPENAI_DEPLOYMENT_FALLBACK
+                or azure_config.get("deployments", {}).get("cheap", "gpt-4o-mini")
+            )
+        else:
+            deployment = (
+                settings.AZURE_OPENAI_DEPLOYMENT_CHAT
+                or azure_config.get("deployments", {}).get("primary", "gpt-4o")
+            )
+        endpoint = settings.AZURE_OPENAI_ENDPOINT or azure_config.get("endpoint", "")
+        api_version = settings.AZURE_OPENAI_API_VERSION or azure_config.get("api_version", "2024-02-15-preview")
+        api_key = settings.AZURE_OPENAI_API_KEY or ""
         logger.info("llm_factory.create", provider="azure", deployment=deployment, tier=tier.value)
         return AzureChatOpenAI(
             azure_deployment=deployment,

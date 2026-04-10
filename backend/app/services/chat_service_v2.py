@@ -142,9 +142,16 @@ class ChatServiceV2:
 
             full_response = ""
             final_state = {}
+            active_agent = None
+            supervisor_done = False
 
             async for event in self._graph.astream_events(input_state, config, version="v2"):
                 kind = event.get("event", "")
+                tags = event.get("tags", [])
+
+                # Track when supervisor finishes (so we know subsequent LLM calls are from agents)
+                if kind == "on_chain_end" and event.get("name") == "supervisor":
+                    supervisor_done = True
 
                 # Agent status events
                 if kind == "on_chain_start":
@@ -156,14 +163,15 @@ class ChatServiceV2:
                         "support",
                         "checkout",
                     ):
+                        active_agent = name
                         yield _sse({
                             "type": "agent_status",
                             "agent": name,
                             "status": "Working on your request...",
                         })
 
-                # Token streaming from the final agent LLM call
-                if kind == "on_chat_model_stream":
+                # Token streaming — only from domain agents, not supervisor
+                if kind == "on_chat_model_stream" and supervisor_done:
                     chunk = event.get("data", {}).get("chunk")
                     if chunk and hasattr(chunk, "content") and chunk.content:
                         full_response += chunk.content
@@ -213,8 +221,10 @@ class ChatServiceV2:
             })
 
         except Exception as exc:
-            logger.error("stream.failed", error=str(exc))
-            yield _sse({"type": "error", "content": "An unexpected error occurred."})
+            import traceback
+            tb = traceback.format_exc()
+            logger.error("stream.failed", error=str(exc), traceback=tb)
+            yield _sse({"type": "error", "content": f"Error: {exc}"})
 
     # ── Private helpers ─────────────────────────────────────────────────────
 

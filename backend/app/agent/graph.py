@@ -52,18 +52,27 @@ def build_graph(rag_client: RAGClient, checkpointer=None):
     support_agent = create_support_agent(primary_llm, rag_client)
 
     # Wrapper that invokes a react agent and extracts the response
-    def _make_agent_wrapper(agent):
+    def _make_agent_wrapper(agent, agent_name: str):
         async def wrapper(state: dict) -> dict:
             messages = state.get("messages", [])
-            result = await agent.ainvoke({"messages": messages})
+            try:
+                result = await agent.ainvoke({"messages": messages})
+            except Exception as exc:
+                logger.error(
+                    "agent_wrapper.failed",
+                    agent=agent_name,
+                    error=str(exc),
+                    error_type=type(exc).__name__,
+                )
+                return {"agent_response": f"I'm having trouble right now. Please try again. ({exc})"}
             # Extract the last AI message as agent_response
+            result_messages = result.get("messages", [])
             ai_messages = [
-                m
-                for m in result.get("messages", [])
-                if hasattr(m, "type") and m.type == "ai"
+                m for m in result_messages
+                if hasattr(m, "type") and m.type == "ai" and m.content
             ]
             agent_response = ai_messages[-1].content if ai_messages else ""
-            return {"agent_response": agent_response, "messages": result.get("messages", [])}
+            return {"agent_response": agent_response, "messages": result_messages}
 
         return wrapper
 
@@ -72,10 +81,10 @@ def build_graph(rag_client: RAGClient, checkpointer=None):
     # Add nodes
     graph.add_node("guardrails", guardrails_node)
     graph.add_node("supervisor", supervisor)
-    graph.add_node("shopping", _make_agent_wrapper(shopping_agent))
-    graph.add_node("style_advisor", _make_agent_wrapper(style_agent))
-    graph.add_node("gift_finder", _make_agent_wrapper(gift_agent))
-    graph.add_node("support", _make_agent_wrapper(support_agent))
+    graph.add_node("shopping", _make_agent_wrapper(shopping_agent, "shopping"))
+    graph.add_node("style_advisor", _make_agent_wrapper(style_agent, "style_advisor"))
+    graph.add_node("gift_finder", _make_agent_wrapper(gift_agent, "gift_finder"))
+    graph.add_node("support", _make_agent_wrapper(support_agent, "support"))
     graph.add_node("post_process", citations_node)
     graph.add_node("suggestions", suggestions)
 
