@@ -10,7 +10,7 @@ import time
 
 from collections.abc import AsyncIterator
 
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.dto.chat_dto import ChatRequest, ChatResponse, ProductCardDTO
@@ -53,8 +53,9 @@ class ChatServiceV2:
             if customer:
                 customer_profile = customer.profile or {}
 
-        # 4. Build input state
-        input_state = self._build_input_state(request, session, customer_profile)
+        # 4. Load conversation history + build input state
+        history = await self._load_history_messages(session.session_id)
+        input_state = self._build_input_state(request, session, customer_profile, history)
 
         # 5. Invoke graph
         config = {"configurable": {"thread_id": str(session.session_id)}}
@@ -137,7 +138,8 @@ class ChatServiceV2:
                 if customer:
                     customer_profile = customer.profile or {}
 
-            input_state = self._build_input_state(request, session, customer_profile)
+            history = await self._load_history_messages(session.session_id)
+            input_state = self._build_input_state(request, session, customer_profile, history)
             config = {"configurable": {"thread_id": str(session.session_id)}}
 
             full_response = ""
@@ -250,14 +252,28 @@ class ChatServiceV2:
         await self._db.commit()
         return session
 
-    @staticmethod
+    async def _load_history_messages(self, session_id) -> list:
+        """Load recent turns from DB as LangChain messages."""
+        recent = await self._message_repo.get_recent_turns(session_id, limit=12)
+        messages = []
+        for msg in recent:
+            if msg.role.value == "USER":
+                messages.append(HumanMessage(content=msg.content))
+            elif msg.role.value == "ASSISTANT":
+                messages.append(AIMessage(content=msg.content))
+        return messages
+
     def _build_input_state(
-        request: ChatRequest, session: Session, customer_profile: dict
+        self, request: ChatRequest, session: Session, customer_profile: dict,
+        history_messages: list | None = None,
     ) -> dict:
         """Construct the initial AgentState dict for graph invocation."""
         ctx = session.context or {}
+        # Prepend conversation history + current message
+        messages = list(history_messages or [])
+        messages.append(HumanMessage(content=request.message))
         return {
-            "messages": [HumanMessage(content=request.message)],
+            "messages": messages,
             "customer_id": str(session.customer_id) if session.customer_id else None,
             "customer_profile": customer_profile,
             "slots": ctx.get("slots", {}),
